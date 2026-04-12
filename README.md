@@ -6,7 +6,9 @@
 
 **Fase 1 — Banco de Dados: ✅ CONCLUÍDA**
 
-**Próxima etapa → Fase 2: ETL (ingestão de dados do INPE)**
+**Fases 2 e 3 — ETL e Backend API: ✅ CONCLUÍDAS**
+
+**Próxima etapa → Fase 4: Frontend / Dashboard**
 
 ---
 
@@ -20,9 +22,8 @@ O **AtmosMetrics** é uma plataforma web para centralizar, processar e visualiza
 
 **Stack planejada:**
 - **Banco de dados:** PostgreSQL 16 + PostGIS 3.4 (via Docker)
-- **ETL:** Python (a implementar na Fase 2)
-- **Backend / API:** A definir
-- **Frontend / Dashboard:** A definir
+- **ETL e Backend:** Python + FastAPI + SQLAlchemy + Pydantic
+- **Frontend / Dashboard:** A definir na Fase 4
 
 ---
 
@@ -77,15 +78,15 @@ git config --global user.email "luiz12henrique21@gmail.com"
 copy .env.example .env
 # Edite o .env e defina uma senha segura para POSTGRES_PASSWORD
 
-# 4. Suba o banco de dados
-docker compose up -d
+# 4. Suba a infraestrutura (Banco + Backend)
+docker compose up -d --build
 
-# 5. Verifique se está funcionando (aguarde ~30s)
-docker compose ps
-docker compose exec db psql -U atmos_user -d atmosmetrics -c "\dt"
+# 5. Verifique se a API e o Banco estão rodando
+# Acesse a documentação gerada automaticamente no seu navegador:
+# http://localhost:8000/docs
 ```
 
-**Resultado esperado no passo 5:** 4 tabelas listadas (`dim_tempo`, `dim_satelite`, `dim_localidade`, `fato_anomalia_termica`)
+**Resultado esperado no passo 5:** A página do Swagger UI abrirá mostrando todas as rotas da API AtmosMetrics (Anomalias, Localidades, ETL).
 
 ---
 
@@ -97,15 +98,18 @@ docker compose exec db psql -U atmos_user -d atmosmetrics -c "\dt"
 - [x] Pré-população: 27 estados brasileiros + 13 satélites INPE
 - [x] Índices espaciais e trigger automático de geom
 
-### Fase 2 — ETL (próxima) 🔜
-- [ ] Script Python para consumir API/arquivos do INPE (focos de calor)
-- [ ] Transformação e carga na `fato_anomalia_termica`
-- [ ] Carga da `dim_tempo` com calendário completo
-- [ ] Carga completa de municípios brasileiros na `dim_localidade`
-- [ ] Agendamento da ingestão (cron / scheduler)
+### Fase 2 — ETL ✅
+- [x] Script Python para consumir API/arquivos do INPE (focos de calor diários)
+- [x] Transformação das strings, lat/lon e extração de data/hora
+- [x] Carga Upsert na `fato_anomalia_termica`, `dim_tempo`, `dim_localidade` e `dim_satelite`
+- [x] Endpoint de disparo manual configurado (`/api/v1/etl/executar`)
 
-### Fase 3 — Backend / API 🔜
-- [ ] A definir
+### Fase 3 — Backend / API ✅
+- [x] Configuração FastAPI no Docker com mapeamento de volume para hot-reload
+- [x] Conexão com o PostGIS via GeoAlchemy2
+- [x] Modelos ORM e Schemas Pydantic mapeando o Star Schema
+- [x] Endpoint de Anomalias com paginação e filtros (data, uf, bioma, satélite)
+- [x] Endpoint de Resumos e Agregadores para o Dashboard
 
 ### Fase 4 — Frontend / Dashboard 🔜
 - [ ] A definir
@@ -123,6 +127,11 @@ AtmosMetrics/
 ├── .gitignore                  # .env e dados sensíveis protegidos
 ├── docker-compose.yml          # PostgreSQL 16 + PostGIS 3.4
 ├── README.md                   # Este arquivo
+├── backend/
+│   ├── app/                    # Rotas, modelos ORM, schemas (FastAPI)
+│   ├── etl/                    # Scripts de ingestão de dados do INPE
+│   ├── Dockerfile              # Imagem do servidor web (API)
+│   └── requirements.txt        # Dependências (FastAPI, SQLAlchemy, Pandas)
 └── database/
     ├── README.md               # Documentação do banco
     └── init/
@@ -136,6 +145,6 @@ AtmosMetrics/
 
 Ao abrir este projeto em uma nova instalação do Antigravity, informe:
 
-> *"Leia o README.md e continue o projeto AtmosMetrics. A Fase 1 (banco de dados) está concluída. Precisamos implementar a Fase 2: ETL em Python para ingerir dados de focos de calor da API do INPE e carregar na tabela `fato_anomalia_termica` e nas dimensões restantes."*
+> *"Leia o README.md e continue o projeto AtmosMetrics. As Fases 1, 2 e 3 (Banco, ETL e API backend no Docker) estão concluídas. Precisamos agora implementar a Fase 4: O Frontend / Dashboard consumindo os dados de http://localhost:8000."*
 
 O Antigravity vai ler o workspace e terá todo o contexto necessário para continuar.
