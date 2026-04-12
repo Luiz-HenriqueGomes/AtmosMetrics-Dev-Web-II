@@ -1,0 +1,32 @@
+# ============================================================
+# AtmosMetrics — Docker Compose
+# ============================================================
+# Para subir o banco:     docker-compose up -d
+# Para parar o banco:     docker-compose down
+# Para ver os logs:       docker-compose logs -f db
+# Para acessar o banco:   docker-compose exec db psql -U atmos_user -d atmosmetrics
+# ============================================================
+
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: atmosmetrics_db
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Volume persistente: os dados do banco ficam salvos aqui
+      - pgdata:/var/lib/postgresql/data
+      # Scripts de inicialização: rodam automaticamente na 1ª vez
+      - ./database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    name: atmosmetrics_pgdata
