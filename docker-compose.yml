@@ -1,10 +1,11 @@
 # ============================================================
 # AtmosMetrics — Docker Compose
 # ============================================================
-# Para subir o banco:     docker-compose up -d
-# Para parar o banco:     docker-compose down
-# Para ver os logs:       docker-compose logs -f db
-# Para acessar o banco:   docker-compose exec db psql -U atmos_user -d atmosmetrics
+# Subir tudo:           docker compose up -d
+# Parar tudo:           docker compose down
+# Logs do backend:      docker compose logs -f backend
+# Logs do banco:        docker compose logs -f db
+# Acessar o banco:      docker compose exec db psql -U atmos_user -d atmosmetrics
 # ============================================================
 
 services:
@@ -17,15 +18,45 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      # Volume persistente: os dados do banco ficam salvos aqui
       - pgdata:/var/lib/postgresql/data
-      # Scripts de inicialização: rodam automaticamente na 1ª vez
       - ./database/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: atmosmetrics_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sobrescreve POSTGRES_HOST para apontar ao serviço interno do Docker
+      - POSTGRES_HOST=db
+    ports:
+      - "8000:8000"
+    volumes:
+      # Hot-reload: qualquer alteração no código reflete sem rebuild
+      - ./backend:/backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: atmosmetrics_pgadmin
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:80"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:
