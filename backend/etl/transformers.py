@@ -38,6 +38,7 @@ DIAS_PT: dict[int, str] = {
 }
 
 # Colunas esperadas no CSV do INPE e seus alias internos
+# Atualizado em abr/2026: precipitacao_dia → precipitacao
 COLUNAS_INPE: dict[str, str] = {
     "lat":                    "latitude",
     "lon":                    "longitude",
@@ -49,7 +50,8 @@ COLUNAS_INPE: dict[str, str] = {
     "municipio_id":           "codigo_ibge",
     "frp":                    "frp_megawatts",
     "risco_fogo":             "risco_fogo",
-    "precipitacao_dia":       "precipitacao_mm",
+    "precipitacao":           "precipitacao_mm",   # nome atualizado pelo INPE
+    "precipitacao_dia":       "precipitacao_mm",   # nome antigo (compatibilidade)
     "numero_dias_sem_chuva":  "dias_sem_chuva",
 }
 
@@ -98,9 +100,11 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df["data_foco"] = None
         df["hora_utc"]  = None
 
-    # Mapeia estado → UF
+    # Mapeia estado → UF (INPE envia nomes em maiúsculas desde abr/2026)
     if "estado" in df.columns:
-        df["uf"] = df["estado"].map(ESTADO_PARA_UF)
+        # Cria mapa case-insensitive: chave em título (Title Case)
+        mapa_ci = {k.upper(): v for k, v in ESTADO_PARA_UF.items()}
+        df["uf"] = df["estado"].str.strip().str.upper().map(mapa_ci)
     else:
         df["uf"] = None
 

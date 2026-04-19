@@ -58,6 +58,10 @@ services:
       db:
         condition: service_healthy
 
+  # frontend: rodando localmente via "npm run dev" (dentro da pasta frontend/)
+  # Para produção, usar Dockerfile.prod com Nginx
+
 volumes:
   pgdata:
     name: atmosmetrics_pgdata
+

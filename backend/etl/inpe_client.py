@@ -9,10 +9,10 @@ from datetime import date
 from io import StringIO
 
 # URL base da API pública do INPE (Programa Queimadas)
-# Formato do arquivo: focos_diarios_Brasil_YYYYMMDD.csv
+# Formato atual do arquivo: focos_diario_br_YYYYMMDD.csv (atualizado em abr/2026)
 INPE_BASE_URL = (
     "https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/diario/Brasil/"
-    "focos_diarios_Brasil_{data}.csv"
+    "focos_diario_br_{data}.csv"
 )
 
 # Timeout generoso: os arquivos do INPE podem ser grandes (>50k linhas)
