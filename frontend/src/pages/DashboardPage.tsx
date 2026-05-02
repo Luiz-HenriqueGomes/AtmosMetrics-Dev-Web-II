@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Flame, MapPin, Satellite, BarChart3, AlertCircle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Cell,
+  Cell,
 } from 'recharts';
 import StatCard from '../components/StatCard';
 import { api, type ResumoResponse } from '../services/api';

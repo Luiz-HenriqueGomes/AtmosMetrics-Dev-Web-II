@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
+import FocosPage from './pages/FocosPage';
+import LocalidadesPage from './pages/LocalidadesPage';
+import SatelitesPage from './pages/SatelitesPage';
+import ConfiguracoesPage from './pages/ConfiguracoesPage';
 import { api } from './services/api';
 import './App.css';
 
@@ -17,8 +21,11 @@ export default function App() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'dashboard': return <DashboardPage />;
-      // Próximas páginas serão adicionadas aqui
+      case 'dashboard':     return <DashboardPage />;
+      case 'anomalias':     return <FocosPage />;
+      case 'localidades':   return <LocalidadesPage />;
+      case 'satelites':     return <SatelitesPage />;
+      case 'configuracoes': return <ConfiguracoesPage />;
       default:
         return (
           <div style={{ color: 'var(--text-secondary)', padding: '2rem', textAlign: 'center' }}>
@@ -41,3 +48,4 @@ export default function App() {
     </div>
   );
 }
+

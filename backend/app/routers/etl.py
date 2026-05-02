@@ -79,7 +79,15 @@ def executar_etl_sync(
             detail=f"Data {data} é no futuro. Use uma data passada.",
         )
 
-    registros = executar_pipeline(data)
+    try:
+        registros = executar_pipeline(data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro interno no ETL: {str(e)}",
+        )
 
     return ETLResponse(
         status="concluído",

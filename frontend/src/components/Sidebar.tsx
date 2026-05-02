@@ -42,7 +42,10 @@ export default function Sidebar({ activePage, onNavigate, apiStatus }: SidebarPr
       ))}
 
       <span className="sidebar-section-label">Sistema</span>
-      <button className="sidebar-link">
+      <button
+        className={`sidebar-link ${activePage === 'configuracoes' ? 'active' : ''}`}
+        onClick={() => onNavigate('configuracoes')}
+      >
         <Settings size={16} className="sidebar-link-icon" />
         Configurações
       </button>
