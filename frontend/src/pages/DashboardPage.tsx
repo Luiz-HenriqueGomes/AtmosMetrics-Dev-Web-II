@@ -134,10 +134,19 @@ export default function DashboardPage() {
             Carregando mapa...
           </div>
         ) : (
-          <MapContainer center={[-14.235, -51.925]} zoom={4} style={{ height: '100%', width: '100%', zIndex: 0, background: '#0d1422' }}>
+          <MapContainer 
+            center={[-14.235, -51.925]} 
+            zoom={4} 
+            minZoom={3}
+            maxBounds={[[-90, -180], [90, 180]]}
+            maxBoundsViscosity={1.0}
+            style={{ height: '100%', width: '100%', zIndex: 0, background: '#0d1422' }}
+          >
             <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              attribution='&copy; <a href="https://carto.com/">Carto</a>'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution='&copy; Esri'
+              className="map-tiles-dark-overlay"
+              noWrap={true}
             />
             {anomalias.map(foco => {
               if (!foco.latitude || !foco.longitude) return null;
@@ -147,8 +156,14 @@ export default function DashboardPage() {
                 <CircleMarker
                   key={foco.id_anomalia}
                   center={[parseFloat(foco.latitude), parseFloat(foco.longitude)]}
-                  radius={isHighRisk ? 6 : 4}
-                  pathOptions={{ color, fillColor: color, fillOpacity: 0.6, weight: 1 }}
+                  radius={isHighRisk ? 5 : 3}
+                  pathOptions={{ 
+                    color: color, 
+                    fillColor: color, 
+                    fillOpacity: 0.8, 
+                    weight: 1,
+                    className: 'glowing-fire-marker' 
+                  }}
                 >
                   <Popup>
                     <div style={{ color: '#333' }}>
