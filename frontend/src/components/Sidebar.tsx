@@ -1,10 +1,12 @@
-import { LayoutDashboard, Flame, MapPin, Satellite, Activity, Settings } from 'lucide-react';
+import { LayoutDashboard, Flame, MapPin, Satellite, Activity, Settings, Sun, Moon } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
   activePage: string;
   onNavigate: (page: string) => void;
   apiStatus: 'online' | 'offline' | 'loading';
+  theme?: 'light' | 'dark';
+  toggleTheme?: () => void;
 }
 
 const navItems = [
@@ -14,7 +16,7 @@ const navItems = [
   { id: 'satelites', label: 'Satélites', icon: Satellite },
 ];
 
-export default function Sidebar({ activePage, onNavigate, apiStatus }: SidebarProps) {
+export default function Sidebar({ activePage, onNavigate, apiStatus, theme, toggleTheme }: SidebarProps) {
   return (
     <aside className="sidebar">
       {/* Logo */}
@@ -50,9 +52,15 @@ export default function Sidebar({ activePage, onNavigate, apiStatus }: SidebarPr
         Configurações
       </button>
 
-      {/* Footer com Status da API */}
+      {/* Footer com Status da API e Tema */}
       <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0 0.75rem' }}>
+        {toggleTheme && (
+          <button className="theme-toggle-btn" onClick={toggleTheme}>
+            {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            <span>Modo {theme === 'light' ? 'Escuro' : 'Claro'}</span>
+          </button>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0 0.75rem', marginTop: '1rem' }}>
           <div
             className="sidebar-status-dot"
             style={{ background: apiStatus === 'online' ? 'var(--green)' : apiStatus === 'offline' ? '#ef4444' : '#f59e0b' }}

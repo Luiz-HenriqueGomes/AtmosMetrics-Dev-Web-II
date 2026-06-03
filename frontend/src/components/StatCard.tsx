@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { type LucideIcon } from 'lucide-react';
+import { motion, animate } from 'framer-motion';
 import './StatCard.css';
 
 interface StatCardProps {
@@ -22,9 +24,28 @@ export default function StatCard({
   cardGlow,
   loading = false,
 }: StatCardProps) {
+  const [displayValue, setDisplayValue] = useState<string | number>(0);
+
+  useEffect(() => {
+    if (!loading && typeof value === 'number') {
+      const controls = animate(0, value, {
+        duration: 1.2,
+        ease: "easeOut",
+        onUpdate(v) {
+          setDisplayValue(Math.floor(v));
+        }
+      });
+      return controls.stop;
+    } else if (!loading) {
+      setDisplayValue(value);
+    }
+  }, [value, loading]);
+
   return (
-    <div
+    <motion.div
       className="stat-card"
+      whileHover={{ y: -4, boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }}
+      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       style={{
         '--card-accent': accent,
         '--card-icon-bg': iconBg,
@@ -41,7 +62,7 @@ export default function StatCard({
       </div>
 
       <div className={`stat-card-value ${loading ? 'loading' : ''}`}>
-        {!loading && (typeof value === 'number' ? value.toLocaleString('pt-BR') : value)}
+        {!loading && (typeof value === 'number' ? (displayValue as number).toLocaleString('pt-BR') : displayValue)}
       </div>
 
       {sub && (
@@ -49,6 +70,6 @@ export default function StatCard({
           {sub}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

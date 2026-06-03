@@ -15,14 +15,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
       <div style={{
-        background: 'rgba(13,20,34,0.95)',
-        border: '1px solid rgba(255,255,255,0.1)',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--glass-border)',
         borderRadius: '8px',
         padding: '0.6rem 1rem',
         fontSize: '12px',
-        color: '#f1f5f9',
+        color: 'var(--text-primary)',
       }}>
-        <p style={{ color: '#94a3b8', marginBottom: '0.25rem' }}>{label}</p>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{label}</p>
         <p style={{ fontWeight: 700, color: '#f97316' }}>
           {payload[0].value?.toLocaleString('pt-BR')} focos
         </p>
@@ -141,7 +141,7 @@ export default function DashboardPage() {
             minZoom={3}
             maxBounds={[[-90, -180], [90, 180]]}
             maxBoundsViscosity={1.0}
-            style={{ height: '100%', width: '100%', zIndex: 0, background: '#0d1422' }}
+            style={{ height: '100%', width: '100%', zIndex: 0, background: 'var(--bg-surface)' }}
           >
             <TileLayer
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
