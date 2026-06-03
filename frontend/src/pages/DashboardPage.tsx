@@ -41,7 +41,7 @@ export default function DashboardPage() {
   useEffect(() => {
     Promise.all([
       api.getResumo(),
-      api.getAnomalias({ limit: 500 })
+      api.getAnomalias({ limit: 200 })
     ])
       .then(([res, anom]) => {
         setResumo(res);
@@ -135,6 +135,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <MapContainer 
+            preferCanvas={true}
             center={[-14.235, -51.925]} 
             zoom={4} 
             minZoom={3}
