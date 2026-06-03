@@ -4,8 +4,10 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell,
 } from 'recharts';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import StatCard from '../components/StatCard';
-import { api, type ResumoResponse } from '../services/api';
+import { api, type ResumoResponse, type AnomaliaItem } from '../services/api';
 import './DashboardPage.css';
 
 // ---- Tooltip customizado para o Recharts ----
@@ -32,12 +34,19 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function DashboardPage() {
   const [resumo, setResumo] = useState<ResumoResponse | null>(null);
+  const [anomalias, setAnomalias] = useState<AnomaliaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getResumo()
-      .then(setResumo)
+    Promise.all([
+      api.getResumo(),
+      api.getAnomalias({ limit: 500 })
+    ])
+      .then(([res, anom]) => {
+        setResumo(res);
+        setAnomalias(anom);
+      })
       .catch(() => setError('Não foi possível carregar os dados. Verifique se o backend está online.'))
       .finally(() => setLoading(false));
   }, []);
@@ -116,6 +125,44 @@ export default function DashboardPage() {
           iconBg="rgba(167,139,250,0.12)"
           loading={loading}
         />
+      </div>
+
+      {/* Mapa Interativo */}
+      <div className="panel" style={{ height: '400px', padding: 0, overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            Carregando mapa...
+          </div>
+        ) : (
+          <MapContainer center={[-14.235, -51.925]} zoom={4} style={{ height: '100%', width: '100%', zIndex: 0, background: '#0d1422' }}>
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              attribution='&copy; <a href="https://carto.com/">Carto</a>'
+            />
+            {anomalias.map(foco => {
+              if (!foco.latitude || !foco.longitude) return null;
+              const isHighRisk = parseFloat(foco.risco_fogo || '0') > 0.8;
+              const color = isHighRisk ? '#ef4444' : '#f97316';
+              return (
+                <CircleMarker
+                  key={foco.id_anomalia}
+                  center={[parseFloat(foco.latitude), parseFloat(foco.longitude)]}
+                  radius={isHighRisk ? 6 : 4}
+                  pathOptions={{ color, fillColor: color, fillOpacity: 0.6, weight: 1 }}
+                >
+                  <Popup>
+                    <div style={{ color: '#333' }}>
+                      <strong>{foco.municipio} - {foco.uf}</strong><br/>
+                      FRP: {foco.frp_megawatts} MW<br/>
+                      Risco: {foco.risco_fogo}<br/>
+                      Data: {foco.data_completa}
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
+          </MapContainer>
+        )}
       </div>
 
       {/* Gráficos */}

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Flame, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react';
+import { Flame, ChevronLeft, ChevronRight, Filter, X, Download } from 'lucide-react';
 import { api, type AnomaliaItem, type AnomaliaFilters, type EstadoOut, type BiomaOut } from '../services/api';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import Papa from 'papaparse';
 import './FocosPage.css';
 
 const PAGE_SIZE = 100;
@@ -63,6 +66,53 @@ export default function FocosPage() {
     setOffset(0);
   };
 
+  const exportPDF = () => {
+    if (data.length === 0) return;
+    const doc = new jsPDF();
+    doc.text('Relatorio de Focos de Calor - AtmosMetrics', 14, 15);
+    
+    const tableData = data.map(item => [
+      item.data_completa ?? '-',
+      item.uf ?? '-',
+      item.municipio ?? '-',
+      item.bioma ?? '-',
+      item.nome_satelite ?? '-',
+      item.frp_megawatts ? Number(item.frp_megawatts).toFixed(1) : '-',
+      item.risco_fogo ? Number(item.risco_fogo).toFixed(2) : '-'
+    ]);
+
+    autoTable(doc, {
+      head: [['Data', 'UF', 'Município', 'Bioma', 'Satélite', 'FRP (MW)', 'Risco']],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 8 },
+    });
+
+    doc.save('atmosmetrics_focos.pdf');
+  };
+
+  const exportCSV = () => {
+    if (data.length === 0) return;
+    const csvData = data.map(item => ({
+      Data: item.data_completa,
+      Hora: item.hora_utc,
+      UF: item.uf,
+      Municipio: item.municipio,
+      Bioma: item.bioma,
+      Satelite: item.nome_satelite,
+      Latitude: item.latitude,
+      Longitude: item.longitude,
+      FRP: item.frp_megawatts,
+      Risco: item.risco_fogo
+    }));
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'atmosmetrics_focos.csv';
+    link.click();
+  };
+
   const hasActiveFilters = uf || bioma || satelite || dataInicio || dataFim;
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
 
@@ -76,14 +126,22 @@ export default function FocosPage() {
             Registro detalhado de anomalias térmicas detectadas por satélite
           </p>
         </div>
-        <button
-          className={`focos-filter-toggle ${filtersOpen ? 'active' : ''}`}
-          onClick={() => setFiltersOpen(!filtersOpen)}
-        >
-          <Filter size={14} />
-          Filtros
-          {hasActiveFilters && <span className="filter-badge" />}
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button className="focos-filter-toggle" onClick={exportCSV} disabled={data.length === 0 || loading} title="Exportar para CSV">
+            <Download size={14} /> CSV
+          </button>
+          <button className="focos-filter-toggle" onClick={exportPDF} disabled={data.length === 0 || loading} title="Exportar para PDF">
+            <Download size={14} /> PDF
+          </button>
+          <button
+            className={`focos-filter-toggle ${filtersOpen ? 'active' : ''}`}
+            onClick={() => setFiltersOpen(!filtersOpen)}
+          >
+            <Filter size={14} />
+            Filtros
+            {hasActiveFilters && <span className="filter-badge" />}
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
