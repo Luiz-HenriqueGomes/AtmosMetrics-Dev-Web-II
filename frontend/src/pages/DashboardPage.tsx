@@ -157,13 +157,13 @@ export default function DashboardPage() {
                 <CircleMarker
                   key={foco.id_anomalia}
                   center={[parseFloat(foco.latitude), parseFloat(foco.longitude)]}
-                  radius={isHighRisk ? 5 : 3}
+                  radius={isHighRisk ? 8 : 5}
                   pathOptions={{ 
-                    color: color, 
+                    color: '#ffffff',
+                    opacity: 0.6,
                     fillColor: color, 
-                    fillOpacity: 0.8, 
-                    weight: 1,
-                    className: 'glowing-fire-marker' 
+                    fillOpacity: 0.9, 
+                    weight: 1.5
                   }}
                 >
                   <Popup>
