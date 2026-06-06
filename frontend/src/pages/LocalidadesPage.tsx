@@ -1,69 +1,145 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { MapPin, Search, Globe } from 'lucide-react';
-import { api, type Localidade, type EstadoOut } from '../services/api';
+import { api, type Localidade, type PaisOut, type ContinenteOut } from '../services/api';
 import './LocalidadesPage.css';
 
-const REGIOES = ['Todas', 'Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
+// Continentes disponíveis para abas
+const CONTINENTES = [
+  'Todos',
+  'América do Sul',
+  'América do Norte',
+  'Europa',
+  'África',
+  'Ásia',
+  'Oceania',
+  'Ártico',
+  'Antártica',
+];
 
-const regionColors: Record<string, string> = {
-  Norte:          '#10b981',
-  Nordeste:       '#f97316',
-  'Centro-Oeste': '#3b82f6',
-  Sudeste:        '#a78bfa',
-  Sul:            '#06b6d4',
+// Cores por continente
+const continentColors: Record<string, string> = {
+  'América do Sul':   '#10b981',
+  'América do Norte': '#3b82f6',
+  'Europa':           '#a78bfa',
+  'África':           '#f97316',
+  'Ásia':             '#06b6d4',
+  'Oceania':          '#ec4899',
+  'Ártico':           '#60a5fa',
+  'Antártica':        '#94a3b8',
 };
 
+// Emojis de bandeira simples (baseado em código ISO de 2 letras)
+function flagEmoji(iso: string | null): string {
+  if (!iso || iso.length !== 2) return '🌍';
+  const codePoints = [...iso.toUpperCase()].map(c => 127397 + c.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
+
 export default function LocalidadesPage() {
-  const [estados, setEstados] = useState<EstadoOut[]>([]);
+  const [paises, setPaises] = useState<PaisOut[]>([]);
+  const [continentes, setContinentes] = useState<ContinenteOut[]>([]);
   const [localidades, setLocalidades] = useState<Localidade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [regiaoFiltro, setRegiaoFiltro] = useState('Todas');
+  const [continenteFiltro, setContinenteFiltro] = useState('Todos');
   const [busca, setBusca] = useState('');
+  const [paisExpandido, setPaisExpandido] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api.getEstados(), api.getLocalidades()])
-      .then(([est, loc]) => {
-        setEstados(est);
-        setLocalidades(loc);
+    Promise.all([
+      api.getPaises().catch(() => [] as PaisOut[]),
+      api.getContinentes().catch(() => [] as ContinenteOut[]),
+      api.getLocalidades().catch(() => [] as Localidade[]),
+    ])
+      .then(([p, c, l]) => {
+        setPaises(p);
+        setContinentes(c);
+        setLocalidades(l);
       })
       .catch(() => setError('Não foi possível carregar as localidades.'))
       .finally(() => setLoading(false));
   }, []);
 
-  // Conta localidades por UF
-  const contagemPorUF = localidades.reduce<Record<string, number>>((acc, l) => {
-    acc[l.uf] = (acc[l.uf] || 0) + 1;
-    return acc;
-  }, {});
+  // Conta localidades por país
+  const contagemPorPais = useMemo(() => {
+    return localidades.reduce<Record<string, number>>((acc, l) => {
+      const p = l.pais || 'Brasil';
+      acc[p] = (acc[p] || 0) + 1;
+      return acc;
+    }, {});
+  }, [localidades]);
 
-  // Biomas únicos por UF
-  const biomasPorUF = localidades.reduce<Record<string, Set<string>>>((acc, l) => {
-    if (!acc[l.uf]) acc[l.uf] = new Set();
-    acc[l.uf].add(l.bioma);
-    return acc;
-  }, {});
+  // Localidades por país (para expansão do card Brasil)
+  const localidadesPorPais = useMemo(() => {
+    return localidades.reduce<Record<string, Localidade[]>>((acc, l) => {
+      const p = l.pais || 'Brasil';
+      if (!acc[p]) acc[p] = [];
+      acc[p].push(l);
+      return acc;
+    }, {});
+  }, [localidades]);
 
-  // Filtragem
-  const estadosFiltrados = estados
-    .filter(e => regiaoFiltro === 'Todas' || e.regiao === regiaoFiltro)
-    .filter(e =>
-      busca === '' ||
-      e.estado.toLowerCase().includes(busca.toLowerCase()) ||
-      e.uf.toLowerCase().includes(busca.toLowerCase())
-    );
+  // Continentes reais do backend para montar as tabs
+  const continentesReais = useMemo(() => {
+    const set = new Set<string>();
+    paises.forEach(p => set.add(p.continente));
+    // Também conta o Brasil se não houver países globais
+    localidades.forEach(l => {
+      if (l.continente) set.add(l.continente);
+    });
+    return set;
+  }, [paises, localidades]);
+
+  // Tabs filtradas: mostra apenas continentes que existem nos dados
+  const tabsVisiveis = CONTINENTES.filter(c => c === 'Todos' || continentesReais.has(c));
+
+  // Filtra países pelo continente e busca
+  const paisesFiltrados = useMemo(() => {
+    // Agrupa por país: se temos dados da tabela paises, usa eles; senão, gera do localidades
+    const paisMap = new Map<string, { pais: string; continente: string; codigo_iso: string | null }>();
+
+    paises.forEach(p => {
+      paisMap.set(p.pais, p);
+    });
+
+    // Adiciona Brasil se não estiver na lista de países globais
+    if (!paisMap.has('Brasil')) {
+      paisMap.set('Brasil', { pais: 'Brasil', continente: 'América do Sul', codigo_iso: 'BR' });
+    }
+
+    let resultado = Array.from(paisMap.values());
+
+    // Filtro por continente
+    if (continenteFiltro !== 'Todos') {
+      resultado = resultado.filter(p => p.continente === continenteFiltro);
+    }
+
+    // Filtro por busca
+    if (busca) {
+      const buscaLower = busca.toLowerCase();
+      resultado = resultado.filter(p =>
+        p.pais.toLowerCase().includes(buscaLower) ||
+        p.continente.toLowerCase().includes(buscaLower)
+      );
+    }
+
+    // Ordena alfabeticamente
+    resultado.sort((a, b) => a.pais.localeCompare(b.pais, 'pt-BR'));
+
+    return resultado;
+  }, [paises, continenteFiltro, busca, localidades]);
 
   return (
     <div className="localidades-page">
       {/* Header */}
       <div className="loc-header">
         <div>
-          <h1 className="loc-title">Localidades</h1>
+          <h1 className="loc-title">Localidades Globais</h1>
           <p className="loc-subtitle">
             <Globe size={13} style={{ verticalAlign: '-2px' }} />{' '}
-            Estados e regiões monitorados pelo sistema — {estados.length} estados · {localidades.length} localidades
+            Países e localidades monitorados — {paises.length > 0 ? `${paises.length} países` : ''} · {localidades.length} localidades
           </p>
         </div>
       </div>
@@ -75,20 +151,20 @@ export default function LocalidadesPage() {
           <input
             className="loc-search"
             type="text"
-            placeholder="Buscar estado..."
+            placeholder="Buscar país ou cidade..."
             value={busca}
             onChange={e => setBusca(e.target.value)}
           />
         </div>
         <div className="loc-region-tabs">
-          {REGIOES.map(r => (
+          {tabsVisiveis.map(c => (
             <button
-              key={r}
-              className={`region-tab ${regiaoFiltro === r ? 'active' : ''}`}
-              onClick={() => setRegiaoFiltro(r)}
-              style={regiaoFiltro === r && r !== 'Todas' ? { borderColor: regionColors[r], color: regionColors[r] } : {}}
+              key={c}
+              className={`region-tab ${continenteFiltro === c ? 'active' : ''}`}
+              onClick={() => setContinenteFiltro(c)}
+              style={continenteFiltro === c && c !== 'Todos' ? { borderColor: continentColors[c], color: continentColors[c] } : {}}
             >
-              {r}
+              {c}
             </button>
           ))}
         </div>
@@ -113,39 +189,51 @@ export default function LocalidadesPage() {
             </div>
           ))}
         </div>
-      ) : estadosFiltrados.length === 0 ? (
+      ) : paisesFiltrados.length === 0 ? (
         <div className="panel" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Nenhum estado encontrado para o filtro selecionado.
+          Nenhum país encontrado para o filtro selecionado.
         </div>
       ) : (
         <div className="loc-grid">
-          {estadosFiltrados.map(e => {
-            const cor = regionColors[e.regiao] || '#94a3b8';
-            const numLocalidades = contagemPorUF[e.uf] || 0;
-            const biomasDoEstado = biomasPorUF[e.uf] ? Array.from(biomasPorUF[e.uf]) : [];
+          {paisesFiltrados.map(p => {
+            const cor = continentColors[p.continente] || '#94a3b8';
+            const numLocalidades = contagemPorPais[p.pais] || 0;
+            const isExpanded = paisExpandido === p.pais;
+            const cidadesDoPais = localidadesPorPais[p.pais] || [];
 
             return (
               <div
-                key={e.uf}
-                className="loc-card"
+                key={p.pais}
+                className={`loc-card ${isExpanded ? 'expanded' : ''}`}
                 style={{ '--card-accent': cor, '--card-glow': `radial-gradient(circle at top left, ${cor}11, transparent 60%)` } as React.CSSProperties}
+                onClick={() => setPaisExpandido(isExpanded ? null : p.pais)}
               >
                 <div className="loc-card-bar" style={{ background: cor }} />
                 <div className="loc-card-top">
-                  <div className="loc-uf-badge" style={{ background: `${cor}18`, color: cor }}>
-                    {e.uf}
+                  <div className="loc-uf-badge" style={{ background: `${cor}18`, color: cor, fontSize: '1.4rem' }}>
+                    {flagEmoji(p.codigo_iso)}
                   </div>
-                  <span className="loc-region-tag" style={{ color: cor }}>{e.regiao}</span>
+                  <span className="loc-region-tag" style={{ color: cor }}>{p.continente}</span>
                 </div>
-                <h3 className="loc-card-name">{e.estado}</h3>
+                <h3 className="loc-card-name">{p.pais}</h3>
                 <div className="loc-card-meta">
                   <span><MapPin size={11} /> {numLocalidades} localidades</span>
+                  {p.codigo_iso && <span style={{ opacity: 0.5 }}>ISO: {p.codigo_iso}</span>}
                 </div>
-                {biomasDoEstado.length > 0 && (
-                  <div className="loc-card-biomas">
-                    {biomasDoEstado.map(b => (
-                      <span key={b} className="bioma-tag">{b}</span>
+
+                {/* Expansão: mostra cidades quando clicado */}
+                {isExpanded && cidadesDoPais.length > 0 && (
+                  <div className="loc-card-cities">
+                    {cidadesDoPais.slice(0, 20).map((l, i) => (
+                      <span key={i} className="bioma-tag">
+                        {l.municipio}{l.uf ? ` (${l.uf})` : ''}
+                      </span>
                     ))}
+                    {cidadesDoPais.length > 20 && (
+                      <span className="bioma-tag" style={{ opacity: 0.5 }}>
+                        +{cidadesDoPais.length - 20} mais
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

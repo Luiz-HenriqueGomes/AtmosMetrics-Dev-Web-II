@@ -1,6 +1,7 @@
 # ============================================================
 # AtmosMetrics — routers/anomalias.py
 # Endpoints: /api/v1/anomalias
+# Expandido com filtros globais (país, continente)
 # ============================================================
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -45,7 +46,8 @@ def _base_query(db: Session):
     )
 
 
-def _apply_filters(query, data_inicio, data_fim, uf, bioma, satelite):
+def _apply_filters(query, data_inicio, data_fim, uf, bioma, satelite,
+                    pais=None, continente=None):
     """Aplica os filtros opcionais à query."""
     if data_inicio:
         query = query.filter(DimTempo.data_completa >= data_inicio)
@@ -57,7 +59,32 @@ def _apply_filters(query, data_inicio, data_fim, uf, bioma, satelite):
         query = query.filter(DimLocalidade.bioma.ilike(f"%{bioma}%"))
     if satelite:
         query = query.filter(DimSatelite.nome_satelite.ilike(f"%{satelite}%"))
+    if pais:
+        query = query.filter(DimLocalidade.pais.ilike(f"%{pais}%"))
+    if continente:
+        query = query.filter(DimLocalidade.continente.ilike(f"%{continente}%"))
     return query
+
+
+def _build_filters(data_inicio, data_fim, uf, bioma, satelite,
+                    pais=None, continente=None):
+    """Retorna lista de expressões de filtro para .filter(*filters)."""
+    filters = []
+    if data_inicio:
+        filters.append(DimTempo.data_completa >= data_inicio)
+    if data_fim:
+        filters.append(DimTempo.data_completa <= data_fim)
+    if uf:
+        filters.append(DimLocalidade.uf == uf.upper())
+    if bioma:
+        filters.append(DimLocalidade.bioma.ilike(f"%{bioma}%"))
+    if satelite:
+        filters.append(DimSatelite.nome_satelite.ilike(f"%{satelite}%"))
+    if pais:
+        filters.append(DimLocalidade.pais.ilike(f"%{pais}%"))
+    if continente:
+        filters.append(DimLocalidade.continente.ilike(f"%{continente}%"))
+    return filters if filters else [text("1=1")]
 
 
 def _row_to_schema(row) -> AnomaliaOut:
@@ -90,16 +117,18 @@ def listar_anomalias(
     uf:          Optional[str]  = Query(None, description="UF do estado (ex: MT, PA)"),
     bioma:       Optional[str]  = Query(None, description="Bioma (ex: Cerrado, Amazônia)"),
     satelite:    Optional[str]  = Query(None, description="Nome do satélite (ex: AQUA_M-T)"),
+    pais:        Optional[str]  = Query(None, description="Filtrar por país"),
+    continente:  Optional[str]  = Query(None, description="Filtrar por continente"),
     limit:       int            = Query(100, ge=1, le=1000, description="Máx. de registros retornados"),
     offset:      int            = Query(0, ge=0, description="Paginação: início da busca"),
     db: Session = Depends(get_db),
 ):
     """
     Retorna uma lista paginada de focos de calor com dados das dimensões.
-    Use os filtros para restringir por período, estado, bioma ou satélite.
+    Use os filtros para restringir por período, estado, bioma, satélite, país ou continente.
     """
     query = _base_query(db)
-    query = _apply_filters(query, data_inicio, data_fim, uf, bioma, satelite)
+    query = _apply_filters(query, data_inicio, data_fim, uf, bioma, satelite, pais, continente)
     rows = query.order_by(DimTempo.data_completa.desc()).offset(offset).limit(limit).all()
     return [_row_to_schema(r) for r in rows]
 
@@ -111,11 +140,13 @@ def resumo_anomalias(
     uf:          Optional[str]  = Query(None, description="Filtrar por UF"),
     bioma:       Optional[str]  = Query(None, description="Filtrar por bioma"),
     satelite:    Optional[str]  = Query(None, description="Filtrar por satélite"),
+    pais:        Optional[str]  = Query(None, description="Filtrar por país"),
+    continente:  Optional[str]  = Query(None, description="Filtrar por continente"),
     db: Session = Depends(get_db),
 ):
     """
     Retorna métricas agregadas para os cards e gráficos do dashboard:
-    total de focos, FRP médio, distribuição por UF e por bioma.
+    total de focos, FRP médio, distribuição por UF, bioma, país e continente.
     """
     # Query base para os agregados gerais
     base = (
@@ -124,7 +155,7 @@ def resumo_anomalias(
         .join(DimLocalidade, FatoAnomaliaTermica.id_localidade == DimLocalidade.id_localidade)
         .join(DimSatelite,   FatoAnomaliaTermica.id_satelite   == DimSatelite.id_satelite)
     )
-    base = _apply_filters(base, data_inicio, data_fim, uf, bioma, satelite)
+    base = _apply_filters(base, data_inicio, data_fim, uf, bioma, satelite, pais, continente)
 
     total = base.count()
     agg = base.with_entities(
@@ -134,40 +165,33 @@ def resumo_anomalias(
         func.max(DimTempo.data_completa).label("data_fim"),
     ).first()
 
-    # Agrupamento por UF
-    por_uf_rows = (
-        db.query(
-            DimLocalidade.uf.label("chave"),
-            func.count(FatoAnomaliaTermica.id_anomalia).label("total_focos"),
-            func.avg(FatoAnomaliaTermica.frp_megawatts).label("frp_media"),
-            func.max(FatoAnomaliaTermica.frp_megawatts).label("frp_max"),
+    # Helper para agrupamentos
+    def _get_agregado(col):
+        return (
+            db.query(
+                col.label("chave"),
+                func.count(FatoAnomaliaTermica.id_anomalia).label("total_focos"),
+                func.avg(FatoAnomaliaTermica.frp_megawatts).label("frp_media"),
+                func.max(FatoAnomaliaTermica.frp_megawatts).label("frp_max"),
+            )
+            .join(DimTempo,      FatoAnomaliaTermica.id_tempo      == DimTempo.id_tempo)
+            .join(DimLocalidade, FatoAnomaliaTermica.id_localidade == DimLocalidade.id_localidade)
+            .join(DimSatelite,   FatoAnomaliaTermica.id_satelite   == DimSatelite.id_satelite)
+            .filter(*_build_filters(data_inicio, data_fim, uf, bioma, satelite, pais, continente))
+            .group_by(col)
+            .order_by(func.count(FatoAnomaliaTermica.id_anomalia).desc())
+            .all()
         )
-        .join(DimTempo,      FatoAnomaliaTermica.id_tempo      == DimTempo.id_tempo)
-        .join(DimLocalidade, FatoAnomaliaTermica.id_localidade == DimLocalidade.id_localidade)
-        .join(DimSatelite,   FatoAnomaliaTermica.id_satelite   == DimSatelite.id_satelite)
-        .filter(*_build_filters(data_inicio, data_fim, uf, bioma, satelite))
-        .group_by(DimLocalidade.uf)
-        .order_by(func.count(FatoAnomaliaTermica.id_anomalia).desc())
-        .limit(27)
-        .all()
-    )
 
-    # Agrupamento por bioma
-    por_bioma_rows = (
-        db.query(
-            DimLocalidade.bioma.label("chave"),
-            func.count(FatoAnomaliaTermica.id_anomalia).label("total_focos"),
-            func.avg(FatoAnomaliaTermica.frp_megawatts).label("frp_media"),
-            func.max(FatoAnomaliaTermica.frp_megawatts).label("frp_max"),
-        )
-        .join(DimTempo,      FatoAnomaliaTermica.id_tempo      == DimTempo.id_tempo)
-        .join(DimLocalidade, FatoAnomaliaTermica.id_localidade == DimLocalidade.id_localidade)
-        .join(DimSatelite,   FatoAnomaliaTermica.id_satelite   == DimSatelite.id_satelite)
-        .filter(*_build_filters(data_inicio, data_fim, uf, bioma, satelite))
-        .group_by(DimLocalidade.bioma)
-        .order_by(func.count(FatoAnomaliaTermica.id_anomalia).desc())
-        .all()
-    )
+    def _to_resumo(rows):
+        return [
+            AnomaliaResumoOut(
+                chave=r.chave or "N/I",
+                total_focos=r.total_focos,
+                frp_media=r.frp_media,
+                frp_max=r.frp_max,
+            ) for r in rows if r.chave
+        ]
 
     return ResumoGeralOut(
         total_focos=total,
@@ -175,28 +199,8 @@ def resumo_anomalias(
         media_risco=agg.media_risco if agg else None,
         data_inicio=agg.data_inicio if agg else None,
         data_fim=agg.data_fim if agg else None,
-        por_uf=[AnomaliaResumoOut(
-            chave=r.chave, total_focos=r.total_focos,
-            frp_media=r.frp_media, frp_max=r.frp_max,
-        ) for r in por_uf_rows],
-        por_bioma=[AnomaliaResumoOut(
-            chave=r.chave, total_focos=r.total_focos,
-            frp_media=r.frp_media, frp_max=r.frp_max,
-        ) for r in por_bioma_rows],
+        por_uf=_to_resumo(_get_agregado(DimLocalidade.uf)),
+        por_bioma=_to_resumo(_get_agregado(DimLocalidade.bioma)),
+        por_pais=_to_resumo(_get_agregado(DimLocalidade.pais)),
+        por_continente=_to_resumo(_get_agregado(DimLocalidade.continente)),
     )
-
-
-def _build_filters(data_inicio, data_fim, uf, bioma, satelite):
-    """Retorna lista de expressões de filtro para .filter(*filters)."""
-    filters = []
-    if data_inicio:
-        filters.append(DimTempo.data_completa >= data_inicio)
-    if data_fim:
-        filters.append(DimTempo.data_completa <= data_fim)
-    if uf:
-        filters.append(DimLocalidade.uf == uf.upper())
-    if bioma:
-        filters.append(DimLocalidade.bioma.ilike(f"%{bioma}%"))
-    if satelite:
-        filters.append(DimSatelite.nome_satelite.ilike(f"%{satelite}%"))
-    return filters if filters else [text("1=1")]

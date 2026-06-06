@@ -36,15 +36,28 @@
   gap: 0.4rem;
 }
 
-/* Grid principal */
+/* Grid principal — suporta múltiplos cards ETL */
 .config-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 1rem;
 }
 
 @media (max-width: 900px) {
   .config-grid { grid-template-columns: 1fr; }
+}
+
+/* Nota informativa dentro do card ETL */
+.etl-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
 }
 
 /* Section */

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Flame, MapPin, Satellite, Activity, Settings, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Thermometer, MapPin, Satellite, Activity, Settings, Sun, Moon } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -11,7 +11,7 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'anomalias', label: 'Focos de Calor', icon: Flame },
+  { id: 'anomalias', label: 'Temperaturas Extremas', icon: Thermometer },
   { id: 'localidades', label: 'Localidades', icon: MapPin },
   { id: 'satelites', label: 'Satélites', icon: Satellite },
 ];
@@ -26,7 +26,7 @@ export default function Sidebar({ activePage, onNavigate, apiStatus, theme, togg
         </div>
         <div>
           <div className="sidebar-logo-text">AtmosMetrics</div>
-          <div className="sidebar-logo-version">v1.0 · Dev Web II</div>
+          <div className="sidebar-logo-version">v2.0 · Global</div>
         </div>
       </div>
 

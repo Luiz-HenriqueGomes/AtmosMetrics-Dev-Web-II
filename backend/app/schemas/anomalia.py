@@ -52,3 +52,5 @@ class ResumoGeralOut(BaseModel):
     data_fim:          Optional[date]    = None
     por_uf:            list[AnomaliaResumoOut] = []
     por_bioma:         list[AnomaliaResumoOut] = []
+    por_pais:          list[AnomaliaResumoOut] = []
+    por_continente:    list[AnomaliaResumoOut] = []

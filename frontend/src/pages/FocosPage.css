@@ -215,6 +215,26 @@
   letter-spacing: 0.5px;
 }
 
+.pais-badge {
+  display: inline-block;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.continente-badge {
+  display: inline-block;
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .td-num {
   font-variant-numeric: tabular-nums;
   text-align: right;

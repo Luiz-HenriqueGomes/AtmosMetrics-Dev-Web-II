@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.database import check_connection
-from app.routers import anomalias, localidades, satelites, etl
+from app.routers import anomalias, localidades, satelites, etl, clima, qualidade_ar
 from app.config import get_settings
 
 settings = get_settings()
@@ -35,10 +35,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AtmosMetrics API",
     description=(
-        "API de monitoramento socioambiental. "
-        "Fornece dados de focos de calor (INPE) processados via Star Schema PostGIS."
+        "API de monitoramento socioambiental global. "
+        "Fornece dados de focos de calor (INPE/FIRMS), clima (Open-Meteo) "
+        "e qualidade do ar (OpenWeatherMap) processados via Star Schema PostGIS."
     ),
-    version="1.0.0",
+    version="2.0.0",
     contact={
         "name": "Luiz Henrique Gomes de Oliveira & Kaio Correia",
     },
@@ -60,6 +61,8 @@ app.include_router(anomalias.router)
 app.include_router(localidades.router)
 app.include_router(satelites.router)
 app.include_router(etl.router)
+app.include_router(clima.router)
+app.include_router(qualidade_ar.router)
 
 
 # ---- Health Check ----------------------------------------------------------
@@ -71,16 +74,25 @@ def health_check():
     return {
         "status":    "online",
         "api":       "AtmosMetrics",
-        "versao":    "1.0.0",
+        "versao":    "2.0.0",
         "banco":     "conectado" if db_ok else "desconectado",
         "docs":      "/docs",
         "endpoints": {
-            "anomalias":   "/api/v1/anomalias",
-            "resumo":      "/api/v1/anomalias/resumo",
-            "localidades": "/api/v1/localidades",
-            "estados":     "/api/v1/localidades/estados",
-            "biomas":      "/api/v1/localidades/biomas",
-            "satelites":   "/api/v1/satelites",
-            "etl":         "/api/v1/etl/executar",
+            "anomalias":     "/api/v1/anomalias",
+            "resumo":        "/api/v1/anomalias/resumo",
+            "localidades":   "/api/v1/localidades",
+            "estados":       "/api/v1/localidades/estados",
+            "biomas":        "/api/v1/localidades/biomas",
+            "paises":        "/api/v1/localidades/paises",
+            "continentes":   "/api/v1/localidades/continentes",
+            "satelites":     "/api/v1/satelites",
+            "clima":         "/api/v1/clima",
+            "qualidade_ar":  "/api/v1/qualidade-ar",
+            "etl":           "/api/v1/etl/executar",
+            "etl_clima":     "/api/v1/etl/executar-clima-sync",
+            "etl_ar":        "/api/v1/etl/executar-qualidade-ar-sync",
+            "etl_firms":     "/api/v1/etl/executar-firms-sync",
+            "etl_global":    "/api/v1/etl/executar-global-sync",
         },
     }
+

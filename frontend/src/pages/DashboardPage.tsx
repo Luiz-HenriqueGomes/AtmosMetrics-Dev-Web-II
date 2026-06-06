@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Flame, MapPin, Satellite, BarChart3, AlertCircle } from 'lucide-react';
+import { Flame, MapPin, Satellite, BarChart3, AlertCircle, Thermometer, Wind } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell,
@@ -7,10 +7,10 @@ import {
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import StatCard from '../components/StatCard';
-import { api, type ResumoResponse, type AnomaliaItem } from '../services/api';
+import { api, type ResumoResponse, type AnomaliaItem, type ResumoClimaResponse, type ResumoQualidadeArResponse } from '../services/api';
 import './DashboardPage.css';
 
-// ---- Tooltip customizado para o Recharts ----
+// ---- Tooltip customizado para o Recharts (focos) ----
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -32,23 +32,98 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
+// ---- Tooltip customizado para gráficos de temperatura ----
+const TempTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--glass-border)',
+        borderRadius: '8px',
+        padding: '0.6rem 1rem',
+        fontSize: '12px',
+        color: 'var(--text-primary)',
+      }}>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{label}</p>
+        <p style={{ fontWeight: 700, color: '#3b82f6' }}>
+          {Number(payload[0].value).toFixed(1)}°C
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// ---- Tooltip customizado para gráficos de qualidade do ar ----
+const AqiTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const aqi = Number(payload[0].value);
+    const color = aqi <= 50 ? '#10b981' : aqi <= 100 ? '#f59e0b' : '#ef4444';
+    return (
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--glass-border)',
+        borderRadius: '8px',
+        padding: '0.6rem 1rem',
+        fontSize: '12px',
+        color: 'var(--text-primary)',
+      }}>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{label}</p>
+        <p style={{ fontWeight: 700, color }}>
+          AQI: {aqi.toFixed(0)}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function DashboardPage() {
   const [resumo, setResumo] = useState<ResumoResponse | null>(null);
   const [anomalias, setAnomalias] = useState<AnomaliaItem[]>([]);
+  const [resumoClima, setResumoClima] = useState<ResumoClimaResponse | null>(null);
+  const [resumoAr, setResumoAr] = useState<ResumoQualidadeArResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getResumo(),
-      api.getAnomalias({ limit: 200 })
-    ])
-      .then(([res, anom]) => {
+    // Carrega todas as fontes de dados independentemente (uma falha não bloqueia as outras)
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+
+      // Dados de focos (INPE / NASA FIRMS)
+      try {
+        const [res, anom] = await Promise.all([
+          api.getResumo(),
+          api.getAnomalias({ limit: 200 }),
+        ]);
         setResumo(res);
         setAnomalias(anom);
-      })
-      .catch(() => setError('Não foi possível carregar os dados. Verifique se o backend está online.'))
-      .finally(() => setLoading(false));
+      } catch {
+        setError('Não foi possível carregar os dados de focos. Verifique se o backend está online.');
+      }
+
+      // Dados de clima (Open-Meteo) — falha silenciosa
+      try {
+        const clima = await api.getResumoClima();
+        setResumoClima(clima);
+      } catch {
+        // API de clima pode não estar configurada ainda
+      }
+
+      // Dados de qualidade do ar (OpenWeatherMap) — falha silenciosa
+      try {
+        const ar = await api.getResumoQualidadeAr();
+        setResumoAr(ar);
+      } catch {
+        // API de qualidade do ar pode não estar configurada ainda
+      }
+
+      setLoading(false);
+    };
+
+    loadData();
   }, []);
 
   // Deriva os dados para os cards e gráficos a partir da estrutura real da API
@@ -63,19 +138,37 @@ export default function DashboardPage() {
   const topUF      = porUF.slice(0, 7);
   const maxUF      = topUF[0]?.total_focos ?? 1;
 
+  // Dados de temperatura por continente para o gráfico
+  const dadosTempContinente = (resumoClima?.por_continente ?? []).map(c => ({
+    continente: c.continente,
+    temp_media: parseFloat(c.temp_media) || 0,
+  }));
+
+  // Dados de qualidade do ar por continente para o gráfico
+  const dadosArContinente = (resumoAr?.por_continente ?? []).map(c => ({
+    continente: c.continente,
+    aqi_medio: parseFloat(c.aqi_medio) || 0,
+  }));
+
+  // Determina cor do AQI para o card
+  const aqiValue = resumoAr?.aqi_medio ? parseFloat(resumoAr.aqi_medio) : null;
+  const aqiColor = aqiValue !== null
+    ? aqiValue <= 50 ? 'var(--green)' : aqiValue <= 100 ? '#f59e0b' : '#ef4444'
+    : 'var(--text-muted)';
+
   return (
     <div className="dashboard">
       {/* Header */}
       <div className="dashboard-header">
         <div>
-          <h1 className="dashboard-title">Monitoramento Nacional</h1>
+          <h1 className="dashboard-title">Monitoramento Global</h1>
           <p className="dashboard-subtitle">
-            Focos de calor detectados por satélites — Fonte: INPE / Programa Queimadas
+            Focos de calor, clima e qualidade do ar — Fontes: INPE, NASA FIRMS, Open-Meteo, OpenWeatherMap
           </p>
         </div>
         <div className="dashboard-badge">
           <span className="badge-dot" />
-          Dados INPE em tempo real
+          Dados em tempo real
         </div>
       </div>
 
@@ -87,7 +180,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stat Cards */}
+      {/* Stat Cards — 6 cards: 4 originais + 2 novos */}
       <div className="stat-grid">
         <StatCard
           label="Total de Focos"
@@ -125,9 +218,27 @@ export default function DashboardPage() {
           iconBg="rgba(167,139,250,0.12)"
           loading={loading}
         />
+        <StatCard
+          label="Temp. Média Global"
+          value={resumoClima?.temperatura_media_global ? `${parseFloat(resumoClima.temperatura_media_global).toFixed(1)}°C` : 'Indisponível'}
+          sub={resumoClima ? `🌡️ Min: ${parseFloat(resumoClima.temperatura_min_global ?? '0').toFixed(1)}°C · Max: ${parseFloat(resumoClima.temperatura_max_global ?? '0').toFixed(1)}°C` : '🌡️ Execute o ETL de Clima'}
+          icon={Thermometer}
+          accent="#3b82f6"
+          iconBg="rgba(59,130,246,0.12)"
+          loading={loading}
+        />
+        <StatCard
+          label="Qualidade do Ar"
+          value={aqiValue !== null ? `AQI ${aqiValue.toFixed(0)}` : 'Indisponível'}
+          sub={resumoAr ? `💨 ${resumoAr.total_registros} registros · PM2.5: ${resumoAr.pm25_medio ?? '—'}` : '💨 Execute o ETL de Qualidade do Ar'}
+          icon={Wind}
+          accent={aqiColor}
+          iconBg={aqiValue !== null && aqiValue <= 50 ? 'rgba(16,185,129,0.12)' : aqiValue !== null && aqiValue <= 100 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)'}
+          loading={loading}
+        />
       </div>
 
-      {/* Mapa Interativo */}
+      {/* Mapa Interativo — Visão Global */}
       <div className="panel" style={{ height: '400px', padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -136,9 +247,9 @@ export default function DashboardPage() {
         ) : (
           <MapContainer 
             preferCanvas={true}
-            center={[-14.235, -51.925]} 
-            zoom={4} 
-            minZoom={3}
+            center={[20, 0]} 
+            zoom={2} 
+            minZoom={2}
             maxBounds={[[-90, -180], [90, 180]]}
             maxBoundsViscosity={1.0}
             style={{ height: '100%', width: '100%', zIndex: 0, background: 'var(--bg-surface)' }}
@@ -168,7 +279,7 @@ export default function DashboardPage() {
                 >
                   <Popup>
                     <div style={{ color: '#333' }}>
-                      <strong>{foco.municipio} - {foco.uf}</strong><br/>
+                      <strong>{foco.municipio}{foco.uf ? ` - ${foco.uf}` : ''}{foco.pais ? ` · ${foco.pais}` : ''}</strong><br/>
                       FRP: {foco.frp_megawatts} MW<br/>
                       Risco: {foco.risco_fogo}<br/>
                       Data: {foco.data_completa}
@@ -181,7 +292,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Gráficos */}
+      {/* Gráficos — Grid 2x2 */}
       <div className="charts-grid">
         {/* Gráfico de barras — focos por bioma */}
         <div className="panel">
@@ -237,6 +348,72 @@ export default function DashboardPage() {
                   {topUF.map((_, i) => (
                     <Cell key={i} fill={i === 0 ? '#3b82f6' : `rgba(59,130,246,${Math.max(0.3, 0.9 - i * 0.1)})`} />
                   ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Gráfico — Temperatura por Continente */}
+        <div className="panel">
+          <div className="panel-title">
+            <Thermometer size={14} />
+            Temperatura por Continente
+          </div>
+          {loading ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              Carregando dados...
+            </div>
+          ) : dadosTempContinente.length === 0 ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              Dados indisponíveis — Execute o ETL de Clima (Open-Meteo)
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={dadosTempContinente} layout="vertical" margin={{ left: 10 }}>
+                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} unit="°C" />
+                <YAxis dataKey="continente" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
+                <Tooltip content={<TempTooltip />} />
+                <Bar dataKey="temp_media" radius={[0, 4, 4, 0]}>
+                  {dadosTempContinente.map((d, i) => {
+                    // Gradiente: azul para frio, vermelho para quente
+                    const temp = d.temp_media;
+                    const color = temp <= 0 ? '#3b82f6' : temp <= 15 ? '#06b6d4' : temp <= 25 ? '#f59e0b' : '#ef4444';
+                    return <Cell key={i} fill={color} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Gráfico — Qualidade do Ar por Continente */}
+        <div className="panel">
+          <div className="panel-title">
+            <Wind size={14} />
+            Qualidade do Ar por Continente
+          </div>
+          {loading ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              Carregando dados...
+            </div>
+          ) : dadosArContinente.length === 0 ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              Dados indisponíveis — Execute o ETL de Qualidade do Ar (OpenWeather)
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={dadosArContinente} layout="vertical" margin={{ left: 10 }}>
+                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="continente" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
+                <Tooltip content={<AqiTooltip />} />
+                <Bar dataKey="aqi_medio" radius={[0, 4, 4, 0]}>
+                  {dadosArContinente.map((d, i) => {
+                    // Verde para bom, amarelo para moderado, vermelho para ruim
+                    const aqi = d.aqi_medio;
+                    const color = aqi <= 50 ? '#10b981' : aqi <= 100 ? '#f59e0b' : '#ef4444';
+                    return <Cell key={i} fill={color} />;
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

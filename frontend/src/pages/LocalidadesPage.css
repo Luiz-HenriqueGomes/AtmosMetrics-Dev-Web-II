@@ -126,7 +126,7 @@
   position: relative;
   overflow: hidden;
   transition: transform var(--transition-med), box-shadow var(--transition-med), border-color var(--transition-med);
-  cursor: default;
+  cursor: pointer;
 }
 
 .loc-card::before {
@@ -154,6 +154,26 @@
   width: 3px;
   height: 100%;
   border-radius: 99px 0 0 99px;
+}
+
+.loc-card.expanded {
+  border-color: var(--card-accent, var(--accent));
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+
+.loc-card-cities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--glass-border);
+  animation: slideDown 250ms ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .loc-card-top {

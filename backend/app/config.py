@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     pgadmin_default_email: str = ""
     pgadmin_default_password: str = ""
 
+    # Chaves de API opcionais para ETLs globais
+    openweather_api_key: str = ""    # OpenWeatherMap — qualidade do ar
+    nasa_firms_map_key: str = ""     # NASA FIRMS — focos de calor globais
+
     model_config = SettingsConfigDict(
         # Tenta ../.env (dev local a partir de backend/) e .env (Docker)
         env_file=["../.env", ".env"],
