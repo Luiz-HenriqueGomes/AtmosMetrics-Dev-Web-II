@@ -58,8 +58,22 @@ services:
       db:
         condition: service_healthy
 
-  # frontend: rodando localmente via "npm run dev" (dentro da pasta frontend/)
-  # Para produção, usar Dockerfile.prod com Nginx
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: atmosmetrics_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      # Hot-reload: reflete as alterações do Windows no container
+      - ./frontend:/app
+      # Volume anônimo para o node_modules não dar conflito
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
   pgdata:

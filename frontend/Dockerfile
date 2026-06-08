@@ -1,23 +1,22 @@
-# Usa uma imagem oficial do Node.js
+# ============================================================
+# AtmosMetrics — Dockerfile do Frontend (Vite/React)
+# ============================================================
+
 FROM node:20-alpine
 
-# Define o diretório de trabalho dentro do contêiner
-WORKDIR /frontend
+WORKDIR /app
 
-# Copia os arquivos de dependência
-COPY package*.json ./
+# Copia apenas os arquivos de dependência primeiro (otimiza cache do Docker)
+COPY package.json package-lock.json* ./
 
 # Instala as dependências
 RUN npm install
 
-# Copia o resto do código da aplicação
+# Copia o restante do código da aplicação
 COPY . .
 
-# Expõe a porta que o Vite utiliza
+# Expõe a porta do Vite
 EXPOSE 5173
 
-# Variáveis do Vite
-ENV HOST=0.0.0.0
-
-# Inicia o modo de desenvolvimento
+# Inicia o servidor em modo de desenvolvimento
 CMD ["npm", "run", "dev"]
