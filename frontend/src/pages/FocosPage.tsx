@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Thermometer, ChevronLeft, ChevronRight, Filter, X, Download } from 'lucide-react';
-import { api, type AnomaliaItem, type AnomaliaFilters, type EstadoOut, type BiomaOut, type PaisOut, type ContinenteOut } from '../services/api';
+import { Thermometer, ChevronLeft, ChevronRight, Filter, X, Download, ThermometerSun, Snowflake } from 'lucide-react';
+import { api, type ClimaItem, type PaisOut, type ContinenteOut } from '../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
@@ -9,31 +9,24 @@ import './FocosPage.css';
 const PAGE_SIZE = 100;
 
 export default function FocosPage() {
-  const [data, setData] = useState<AnomaliaItem[]>([]);
+  const [data, setData] = useState<ClimaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Filtros
-  const [uf, setUf] = useState('');
-  const [bioma, setBioma] = useState('');
-  const [satelite, setSatelite] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [continente, setContinente] = useState('');
   const [pais, setPais] = useState('');
 
   // Opções para selects
-  const [estados, setEstados] = useState<EstadoOut[]>([]);
-  const [biomas, setBiomas] = useState<BiomaOut[]>([]);
   const [paises, setPaises] = useState<PaisOut[]>([]);
   const [continentes, setContinentes] = useState<ContinenteOut[]>([]);
 
   // Carrega opções de filtro ao montar
   useEffect(() => {
-    api.getEstados().then(setEstados).catch(() => {});
-    api.getBiomas().then(setBiomas).catch(() => {});
     api.getPaises().then(setPaises).catch(() => {});
     api.getContinentes().then(setContinentes).catch(() => {});
   }, []);
@@ -43,40 +36,31 @@ export default function FocosPage() {
     ? paises.filter(p => p.continente === continente)
     : paises;
 
-  // Mostra UF/Bioma somente quando o país é Brasil (ou sem filtro de país)
-  const mostrarFiltrosBrasil = !pais || pais === 'Brasil';
-
   // Carrega dados quando filtros ou offset mudam
   useEffect(() => {
     setLoading(true);
     setError(null);
 
-    const filters: AnomaliaFilters = {
+    const filters = {
       limit: PAGE_SIZE,
       offset,
-      ...(uf && { uf }),
-      ...(bioma && { bioma }),
-      ...(satelite && { satelite }),
       ...(dataInicio && { data_inicio: dataInicio }),
       ...(dataFim && { data_fim: dataFim }),
       ...(pais && { pais }),
       ...(continente && { continente }),
     };
 
-    api.getAnomalias(filters)
+    api.getClimaExtremas(filters)
       .then(setData)
-      .catch(() => setError('Não foi possível carregar os focos de temperaturas extremas.'))
+      .catch(() => setError('Não foi possível carregar as temperaturas extremas.'))
       .finally(() => setLoading(false));
-  }, [offset, uf, bioma, satelite, dataInicio, dataFim, pais, continente]);
+  }, [offset, dataInicio, dataFim, pais, continente]);
 
   const handleFilter = () => {
     setOffset(0); // Reset para página 1 ao filtrar
   };
 
   const clearFilters = () => {
-    setUf('');
-    setBioma('');
-    setSatelite('');
     setDataInicio('');
     setDataFim('');
     setContinente('');
@@ -100,16 +84,14 @@ export default function FocosPage() {
       item.data_completa ?? '-',
       item.pais ?? '-',
       item.continente ?? '-',
-      item.uf ?? '-',
-      item.municipio ?? '-',
-      item.bioma ?? '-',
-      item.nome_satelite ?? '-',
-      item.frp_megawatts ? Number(item.frp_megawatts).toFixed(1) : '-',
-      item.risco_fogo ? Number(item.risco_fogo).toFixed(2) : '-'
+      (item.pais === 'Brasil' && !item.municipio?.startsWith('Grid')) ? (item.municipio ?? '-') : '—',
+      item.temperatura_max ? `${Number(item.temperatura_max).toFixed(1)}°C` : '-',
+      item.temperatura_min ? `${Number(item.temperatura_min).toFixed(1)}°C` : '-',
+      item.velocidade_vento ? `${Number(item.velocidade_vento).toFixed(1)} km/h` : '-'
     ]);
 
     autoTable(doc, {
-      head: [['Data', 'País', 'Continente', 'UF', 'Município', 'Bioma', 'Satélite', 'FRP (MW)', 'Risco']],
+      head: [['Data', 'País', 'Continente', 'Município', 'Temp Máx', 'Temp Mín', 'Vento']],
       body: tableData,
       startY: 20,
       styles: { fontSize: 8 },
@@ -122,17 +104,15 @@ export default function FocosPage() {
     if (data.length === 0) return;
     const csvData = data.map(item => ({
       Data: item.data_completa,
-      Hora: item.hora_utc,
       Pais: item.pais,
       Continente: item.continente,
-      UF: item.uf,
-      Municipio: item.municipio,
-      Bioma: item.bioma,
-      Satelite: item.nome_satelite,
+      Municipio: (item.pais === 'Brasil' && !item.municipio?.startsWith('Grid')) ? item.municipio : '—',
       Latitude: item.latitude,
       Longitude: item.longitude,
-      FRP: item.frp_megawatts,
-      Risco: item.risco_fogo
+      TempMax: item.temperatura_max,
+      TempMin: item.temperatura_min,
+      Precipitacao: item.precipitacao_mm,
+      Vento: item.velocidade_vento
     }));
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -142,7 +122,7 @@ export default function FocosPage() {
     link.click();
   };
 
-  const hasActiveFilters = uf || bioma || satelite || dataInicio || dataFim || pais || continente;
+  const hasActiveFilters = dataInicio || dataFim || pais || continente;
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
 
   return (
@@ -150,9 +130,9 @@ export default function FocosPage() {
       {/* Header */}
       <div className="focos-header">
         <div>
-          <h1 className="focos-title">Focos de Temperaturas Extremas</h1>
+          <h1 className="focos-title">Temperaturas Extremas</h1>
           <p className="focos-subtitle">
-            Registro detalhado de anomalias térmicas detectadas por satélite — Dados globais
+            Monitoramento global de ondas de calor (≥ 35°C) e frio extremo (≤ 0°C)
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -177,7 +157,6 @@ export default function FocosPage() {
       {filtersOpen && (
         <div className="focos-filters panel">
           <div className="filters-grid">
-            {/* Filtros globais — sempre visíveis */}
             <div className="filter-group">
               <label className="filter-label">Continente</label>
               <select className="filter-input" value={continente} onChange={e => handleContinenteChange(e.target.value)}>
@@ -196,44 +175,6 @@ export default function FocosPage() {
                   <option key={p.pais} value={p.pais}>{p.pais}</option>
                 ))}
               </select>
-            </div>
-
-            {/* Filtros brasileiros — visíveis apenas quando país é Brasil ou nenhum */}
-            {mostrarFiltrosBrasil && (
-              <>
-                <div className="filter-group">
-                  <label className="filter-label">Estado (UF)</label>
-                  <select className="filter-input" value={uf} onChange={e => { setUf(e.target.value); handleFilter(); }}>
-                    <option value="">Todos</option>
-                    {estados.map(e => (
-                      <option key={e.uf} value={e.uf}>{e.uf} — {e.estado}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="filter-group">
-                  <label className="filter-label">Bioma</label>
-                  <select className="filter-input" value={bioma} onChange={e => { setBioma(e.target.value); handleFilter(); }}>
-                    <option value="">Todos</option>
-                    {biomas.map(b => (
-                      <option key={b.bioma} value={b.bioma}>{b.bioma}</option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
-
-            <div className="filter-group">
-              <label className="filter-label">Satélite</label>
-              <input
-                className="filter-input"
-                type="text"
-                placeholder="Ex: AQUA_M-T"
-                value={satelite}
-                onChange={e => setSatelite(e.target.value)}
-                onBlur={handleFilter}
-                onKeyDown={e => e.key === 'Enter' && handleFilter()}
-              />
             </div>
 
             <div className="filter-group">
@@ -290,53 +231,63 @@ export default function FocosPage() {
           <table className="focos-table">
             <thead>
               <tr>
+                <th>Tipo</th>
                 <th>Data</th>
-                <th>Hora</th>
                 <th>País</th>
                 <th>Continente</th>
-                <th>UF</th>
                 <th>Município</th>
-                <th>Bioma</th>
-                <th>Satélite</th>
                 <th>Lat</th>
                 <th>Lon</th>
-                <th>FRP (MW)</th>
-                <th>Risco</th>
+                <th>Temp Máx</th>
+                <th>Temp Mín</th>
+                <th>Precip (mm)</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="skeleton-row">
-                    {Array.from({ length: 12 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j}><div className="skeleton-cell" /></td>
                     ))}
                   </tr>
                 ))
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="focos-empty">
+                  <td colSpan={10} className="focos-empty">
                     <Thermometer size={20} />
-                    <span>Nenhum foco encontrado. {hasActiveFilters ? 'Tente ajustar os filtros.' : 'Execute o ETL para popular o banco.'}</span>
+                    <span>Nenhum registro extremo encontrado no período.</span>
                   </td>
                 </tr>
               ) : (
-                data.map(item => (
-                  <tr key={item.id_anomalia}>
-                    <td>{item.data_completa ?? '—'}</td>
-                    <td>{item.hora_utc ?? '—'}</td>
-                    <td><span className="pais-badge">{item.pais ?? '—'}</span></td>
-                    <td><span className="continente-badge">{item.continente ?? '—'}</span></td>
-                    <td><span className="uf-badge">{item.uf ?? '—'}</span></td>
-                    <td>{item.municipio ?? '—'}</td>
-                    <td>{item.bioma ?? '—'}</td>
-                    <td className="td-satelite">{item.nome_satelite ?? '—'}</td>
-                    <td className="td-num">{Number(item.latitude).toFixed(4)}</td>
-                    <td className="td-num">{Number(item.longitude).toFixed(4)}</td>
-                    <td className="td-num td-frp">{item.frp_megawatts ? Number(item.frp_megawatts).toFixed(1) : '—'}</td>
-                    <td className="td-num">{item.risco_fogo ? Number(item.risco_fogo).toFixed(2) : '—'}</td>
-                  </tr>
-                ))
+                data.map(item => {
+                  const isHot = Number(item.temperatura_max) >= 35;
+                  const isCold = Number(item.temperatura_min) <= 0;
+                  const renderTipo = () => {
+                    if (isHot) return <span className="tipo-badge hot"><ThermometerSun size={12}/> Calor</span>;
+                    if (isCold) return <span className="tipo-badge cold"><Snowflake size={12}/> Frio</span>;
+                    return '—';
+                  };
+
+                  return (
+                    <tr key={item.id_clima}>
+                      <td>{renderTipo()}</td>
+                      <td>{item.data_completa ?? '—'}</td>
+                      <td><span className="pais-badge">{item.pais ?? '—'}</span></td>
+                      <td><span className="continente-badge">{item.continente ?? '—'}</span></td>
+                      <td>{(item.pais === 'Brasil' && !item.municipio?.startsWith('Grid')) ? item.municipio : <span style={{color:'#666'}}>{item.pais}</span>}</td>
+                      <td className="td-num">{Number(item.latitude).toFixed(4)}</td>
+                      <td className="td-num">{Number(item.longitude).toFixed(4)}</td>
+                      <td className="td-num" style={{ color: isHot ? '#ef4444' : 'inherit', fontWeight: isHot ? 600 : 400 }}>
+                        {item.temperatura_max ? `${Number(item.temperatura_max).toFixed(1)}°C` : '—'}
+                      </td>
+                      <td className="td-num" style={{ color: isCold ? '#3b82f6' : 'inherit', fontWeight: isCold ? 600 : 400 }}>
+                        {item.temperatura_min ? `${Number(item.temperatura_min).toFixed(1)}°C` : '—'}
+                      </td>
+                      <td className="td-num">{item.precipitacao_mm ?? '—'}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

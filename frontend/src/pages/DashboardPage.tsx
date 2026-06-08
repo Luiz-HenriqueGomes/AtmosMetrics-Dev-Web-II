@@ -1,118 +1,83 @@
 import { useEffect, useState } from 'react';
-import { Flame, MapPin, Satellite, BarChart3, AlertCircle, Thermometer, Wind } from 'lucide-react';
+import { MapPin, AlertCircle, Thermometer, Wind, ThermometerSun, Snowflake, Droplets } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import StatCard from '../components/StatCard';
-import { api, type ResumoResponse, type AnomaliaItem, type ResumoClimaResponse, type ResumoQualidadeArResponse } from '../services/api';
+import { api, type ClimaItem, type ResumoClimaResponse, type ResumoQualidadeArResponse } from '../services/api';
 import './DashboardPage.css';
 
-// ---- Tooltip customizado para o Recharts (focos) ----
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--glass-border)',
-        borderRadius: '8px',
-        padding: '0.6rem 1rem',
-        fontSize: '12px',
-        color: 'var(--text-primary)',
-      }}>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{label}</p>
-        <p style={{ fontWeight: 700, color: '#f97316' }}>
-          {payload[0].value?.toLocaleString('pt-BR')} focos
-        </p>
-      </div>
-    );
-  }
+// Utilitário para formatar nomes de localidades (Title Case)
+const formatLocationName = (str: string | null) => {
+  if (!str) return '';
+  const prepositions = ['de', 'da', 'do', 'das', 'dos', 'e'];
+  return str.toLowerCase().split(' ').map((word, index) => {
+    if (index > 0 && prepositions.includes(word)) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }).join(' ');
+};
+
+// Utilitário para pegar o nome correto a exibir (Município se Brasil, caso contrário País)
+const getLocationLabel = (item: any) => {
+  const isValidCity = item.municipio !== null && item.pais === 'Brasil' && !item.municipio.startsWith('Grid');
+  const name = isValidCity ? item.municipio : item.pais;
+  return formatLocationName(name);
+};
+
+// Componente auxiliar para controlar o mapa dinamicamente
+const MapController = ({ center, zoom }: { center: [number, number] | null, zoom: number }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, zoom, { duration: 1.5 });
+    }
+  }, [center, zoom, map]);
   return null;
 };
 
-// ---- Tooltip customizado para gráficos de temperatura ----
-const TempTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--glass-border)',
-        borderRadius: '8px',
-        padding: '0.6rem 1rem',
-        fontSize: '12px',
-        color: 'var(--text-primary)',
-      }}>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{label}</p>
-        <p style={{ fontWeight: 700, color: '#3b82f6' }}>
-          {Number(payload[0].value).toFixed(1)}°C
-        </p>
-      </div>
-    );
-  }
-  return null;
+// Utilitário para determinar cor da temperatura
+const getTempColor = (temp: number) => {
+  if (temp <= 20) return '#3b82f6'; // Azul
+  if (temp >= 28) return '#ef4444'; // Vermelho
+  
+  // Para temperaturas entre 20 e 28 (que estavam ficando rosa/brancas), 
+  // usamos diretamente o Laranja. Assim evitamos qualquer tom indesejado gerado pela mistura.
+  return '#f59e0b'; // Laranja
 };
 
-// ---- Tooltip customizado para gráficos de qualidade do ar ----
-const AqiTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    const aqi = Number(payload[0].value);
-    const color = aqi <= 50 ? '#10b981' : aqi <= 100 ? '#f59e0b' : '#ef4444';
-    return (
-      <div style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--glass-border)',
-        borderRadius: '8px',
-        padding: '0.6rem 1rem',
-        fontSize: '12px',
-        color: 'var(--text-primary)',
-      }}>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{label}</p>
-        <p style={{ fontWeight: 700, color }}>
-          AQI: {aqi.toFixed(0)}
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
+
 
 export default function DashboardPage() {
-  const [resumo, setResumo] = useState<ResumoResponse | null>(null);
-  const [anomalias, setAnomalias] = useState<AnomaliaItem[]>([]);
+  const [anomalias, setAnomalias] = useState<ClimaItem[]>([]);
   const [resumoClima, setResumoClima] = useState<ResumoClimaResponse | null>(null);
   const [resumoAr, setResumoAr] = useState<ResumoQualidadeArResponse | null>(null);
+  const [mapFocus, setMapFocus] = useState<[number, number] | null>(null);
+  const [activeFoco, setActiveFoco] = useState<ClimaItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Carrega todas as fontes de dados independentemente (uma falha não bloqueia as outras)
+    // Carrega todas as fontes de dados independentemente
     const loadData = async () => {
       setLoading(true);
       setError(null);
 
-      // Dados de focos (INPE / NASA FIRMS)
+      // Dados de clima (Open-Meteo) para o mapa e métricas
       try {
-        const [res, anom] = await Promise.all([
-          api.getResumo(),
-          api.getAnomalias({ limit: 200 }),
+        const [extremas, clima] = await Promise.all([
+          api.getClimaExtremas({ limit: 500 }),
+          api.getResumoClima()
         ]);
-        setResumo(res);
-        setAnomalias(anom);
-      } catch {
-        setError('Não foi possível carregar os dados de focos. Verifique se o backend está online.');
-      }
-
-      // Dados de clima (Open-Meteo) — falha silenciosa
-      try {
-        const clima = await api.getResumoClima();
+        setAnomalias(extremas);
         setResumoClima(clima);
       } catch {
-        // API de clima pode não estar configurada ainda
+        setError('Não foi possível carregar os dados climáticos. Execute o ETL ou verifique a API.');
       }
 
-      // Dados de qualidade do ar (OpenWeatherMap) — falha silenciosa
+      // Dados de qualidade do ar (OpenWeatherMap)
       try {
         const ar = await api.getResumoQualidadeAr();
         setResumoAr(ar);
@@ -126,29 +91,53 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  // Deriva os dados para os cards e gráficos a partir da estrutura real da API
-  const porUF    = resumo?.por_uf    ?? [];
-  const porBioma = resumo?.por_bioma ?? [];
+  // Filtra dados únicos para não repetir a mesma cidade/país no Top 10
+  const getUniqueTop = (list: ClimaItem[], type: 'max' | 'min') => {
+    const unique = new Map();
+    list.forEach(item => {
+      if ((type === 'max' && item.temperatura_max === null) || (type === 'min' && item.temperatura_min === null)) return;
+      
+      const locationName = getLocationLabel(item);
+      const locationKey = item.municipio !== null && item.pais === 'Brasil' && !item.municipio.startsWith('Grid') 
+          ? `${locationName} - ${formatLocationName(item.pais)}` 
+          : locationName;
+      
+      const currentTemp = type === 'max' ? Number(item.temperatura_max) : Number(item.temperatura_min);
+      
+      if (!unique.has(locationKey)) {
+        unique.set(locationKey, item);
+      } else {
+        const existing = unique.get(locationKey);
+        const existingTemp = type === 'max' ? Number(existing.temperatura_max) : Number(existing.temperatura_min);
+        if (type === 'max' && currentTemp > existingTemp) {
+          unique.set(locationKey, item);
+        } else if (type === 'min' && currentTemp < existingTemp) {
+          unique.set(locationKey, item);
+        }
+      }
+    });
+    const result = Array.from(unique.values());
+    return result.sort((a, b) => {
+      if (type === 'max') return Number(b.temperatura_max) - Number(a.temperatura_max);
+      return Number(a.temperatura_min) - Number(b.temperatura_min);
+    }).slice(0, 10);
+  };
 
-  const estadosAfetados  = porUF.length;
-  const biomaMaisAfetado = porBioma[0]?.chave ?? '—';
+  const topQuentes = getUniqueTop(anomalias, 'max');
+  const topFrios = getUniqueTop(anomalias.filter(a => a.pais !== 'Antártica'), 'min');
 
-  // Formata para o Recharts
-  const dadosBioma = porBioma.map(b => ({ bioma: b.chave, total: b.total_focos }));
-  const topUF      = porUF.slice(0, 7);
-  const maxUF      = topUF[0]?.total_focos ?? 1;
+  // Encontra recordes do dia
+  const hottestPlace = topQuentes[0];
+  const coldestPlace = topFrios[0];
 
-  // Dados de temperatura por continente para o gráfico
-  const dadosTempContinente = (resumoClima?.por_continente ?? []).map(c => ({
-    continente: c.continente,
-    temp_media: parseFloat(c.temp_media) || 0,
-  }));
-
-  // Dados de qualidade do ar por continente para o gráfico
-  const dadosArContinente = (resumoAr?.por_continente ?? []).map(c => ({
-    continente: c.continente,
-    aqi_medio: parseFloat(c.aqi_medio) || 0,
-  }));
+  // Encontra localidade com maior variação climática (amplitude térmica)
+  const maiorVariacao = [...anomalias]
+    .filter(a => a.temperatura_max !== null && a.temperatura_min !== null)
+    .sort((a, b) => {
+      const diffA = Number(a.temperatura_max) - Number(a.temperatura_min);
+      const diffB = Number(b.temperatura_max) - Number(b.temperatura_min);
+      return diffB - diffA;
+    })[0];
 
   // Determina cor do AQI para o card
   const aqiValue = resumoAr?.aqi_medio ? parseFloat(resumoAr.aqi_medio) : null;
@@ -163,12 +152,12 @@ export default function DashboardPage() {
         <div>
           <h1 className="dashboard-title">Monitoramento Global</h1>
           <p className="dashboard-subtitle">
-            Focos de calor, clima e qualidade do ar — Fontes: INPE, NASA FIRMS, Open-Meteo, OpenWeatherMap
+            Análise meteorológica e de qualidade do ar em tempo real — Fontes: Open-Meteo, OpenWeatherMap
           </p>
         </div>
         <div className="dashboard-badge">
           <span className="badge-dot" />
-          Dados em tempo real
+          Dados Globais Ativos
         </div>
       </div>
 
@@ -180,66 +169,48 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stat Cards — 6 cards: 4 originais + 2 novos */}
+      {/* Stat Cards - Apenas 4 Blocos Essenciais */}
       <div className="stat-grid">
         <StatCard
-          label="Total de Focos"
-          value={resumo?.total_focos ?? 0}
-          sub="🔥 Todos os registros no banco de dados"
-          icon={Flame}
-          accent="var(--fire)"
-          iconBg="rgba(249,115,22,0.12)"
-          loading={loading}
-        />
-        <StatCard
-          label="Estados Afetados"
-          value={estadosAfetados}
-          sub={`📍 de 27 Unidades Federativas`}
+          label="Regiões Monitoradas"
+          value={resumoClima?.total_registros ?? 0}
+          sub="🌍 Locais com dados climáticos"
           icon={MapPin}
           accent="var(--accent)"
           iconBg="rgba(59,130,246,0.12)"
           loading={loading}
         />
         <StatCard
-          label="Bioma + Afetado"
-          value={biomaMaisAfetado}
-          sub={`🌿 ${porBioma[0]?.total_focos?.toLocaleString('pt-BR') ?? '—'} focos registrados`}
-          icon={BarChart3}
-          accent="var(--green)"
-          iconBg="rgba(16,185,129,0.12)"
+          label="Pico de Calor"
+          value={hottestPlace ? `${hottestPlace.temperatura_max}°C` : '—'}
+          sub={hottestPlace ? `🔥 ${getLocationLabel(hottestPlace)}` : '—'}
+          icon={ThermometerSun}
+          accent="#ef4444"
+          iconBg="rgba(239,68,68,0.12)"
           loading={loading}
         />
         <StatCard
-          label="FRP Médio"
-          value={resumo?.media_frp ? `${parseFloat(resumo.media_frp).toFixed(1)} MW` : '—'}
-          sub="🛰️ Potência Radiativa do Fogo"
-          icon={Satellite}
-          accent="#a78bfa"
-          iconBg="rgba(167,139,250,0.12)"
-          loading={loading}
-        />
-        <StatCard
-          label="Temp. Média Global"
-          value={resumoClima?.temperatura_media_global ? `${parseFloat(resumoClima.temperatura_media_global).toFixed(1)}°C` : 'Indisponível'}
-          sub={resumoClima ? `🌡️ Min: ${parseFloat(resumoClima.temperatura_min_global ?? '0').toFixed(1)}°C · Max: ${parseFloat(resumoClima.temperatura_max_global ?? '0').toFixed(1)}°C` : '🌡️ Execute o ETL de Clima'}
-          icon={Thermometer}
+          label="Pico de Frio"
+          value={coldestPlace ? `${coldestPlace.temperatura_min}°C` : '—'}
+          sub={coldestPlace ? `❄️ ${getLocationLabel(coldestPlace)}` : '—'}
+          icon={Snowflake}
           accent="#3b82f6"
           iconBg="rgba(59,130,246,0.12)"
           loading={loading}
         />
         <StatCard
-          label="Qualidade do Ar"
-          value={aqiValue !== null ? `AQI ${aqiValue.toFixed(0)}` : 'Indisponível'}
-          sub={resumoAr ? `💨 ${resumoAr.total_registros} registros · PM2.5: ${resumoAr.pm25_medio ?? '—'}` : '💨 Execute o ETL de Qualidade do Ar'}
-          icon={Wind}
-          accent={aqiColor}
-          iconBg={aqiValue !== null && aqiValue <= 50 ? 'rgba(16,185,129,0.12)' : aqiValue !== null && aqiValue <= 100 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)'}
+          label="Maior Variação (Dia)"
+          value={maiorVariacao ? `${maiorVariacao.temperatura_min}°C / ${maiorVariacao.temperatura_max}°C` : '—'}
+          sub={maiorVariacao ? `🔄 ${getLocationLabel(maiorVariacao)} (Variação: ${(Number(maiorVariacao.temperatura_max) - Number(maiorVariacao.temperatura_min)).toFixed(1)}°C)` : '—'}
+          icon={Thermometer}
+          accent="#8b5cf6"
+          iconBg="rgba(139,92,246,0.12)"
           loading={loading}
         />
       </div>
 
       {/* Mapa Interativo — Visão Global */}
-      <div className="panel" style={{ height: '400px', padding: 0, overflow: 'hidden' }}>
+      <div className="panel" style={{ height: '450px', padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
             Carregando mapa...
@@ -248,41 +219,66 @@ export default function DashboardPage() {
           <MapContainer 
             preferCanvas={true}
             center={[20, 0]} 
-            zoom={2} 
+            zoom={2.5} 
             minZoom={2}
-            maxBounds={[[-90, -180], [90, 180]]}
-            maxBoundsViscosity={1.0}
-            style={{ height: '100%', width: '100%', zIndex: 0, background: 'var(--bg-surface)' }}
+            style={{ height: '100%', width: '100%', zIndex: 0, background: '#1e293b' }}
           >
+            <MapController center={mapFocus} zoom={6} />
             <TileLayer
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
               attribution='&copy; Esri'
               className="map-tiles-dark-overlay"
-              noWrap={true}
             />
+
+            {activeFoco && activeFoco.latitude && activeFoco.longitude && (
+              <Popup 
+                position={[parseFloat(activeFoco.latitude), parseFloat(activeFoco.longitude)]}
+                className="custom-popup"
+                onClose={() => setActiveFoco(null)}
+              >
+                <div style={{ textAlign: 'center', minWidth: '120px' }}>
+                  <strong style={{ fontSize: '14px' }}>{getLocationLabel(activeFoco)}</strong>
+                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  Temp Atual: {activeFoco.temperatura_media}°C<br/>
+                  Mín/Máx: {activeFoco.temperatura_min}°C / {activeFoco.temperatura_max}°C<br/>
+                  Umidade: {activeFoco.umidade_media}%<br/>
+                  Data: {activeFoco.data_completa}
+                </div>
+                </div>
+              </Popup>
+            )}
+
+
             {anomalias.map(foco => {
               if (!foco.latitude || !foco.longitude) return null;
-              const isHighRisk = parseFloat(foco.risco_fogo || '0') > 0.8;
-              const color = isHighRisk ? '#ef4444' : '#f97316';
+              
+              // Determinar o quão extremo é para o tamanho e cor do ponto
+              const temp = Number(foco.temperatura_media);
+              const color = getTempColor(temp);
+              const radius = Math.max(4, Math.min(14, Math.abs(temp - 20) / 2.5)); // Raio proporcional
+              
               return (
                 <CircleMarker
-                  key={foco.id_anomalia}
+                  key={foco.id_clima}
                   center={[parseFloat(foco.latitude), parseFloat(foco.longitude)]}
-                  radius={isHighRisk ? 8 : 5}
+                  radius={radius}
                   pathOptions={{ 
                     color: '#ffffff',
                     opacity: 0.6,
                     fillColor: color, 
-                    fillOpacity: 0.9, 
+                    fillOpacity: 0.85, 
                     weight: 1.5
                   }}
                 >
-                  <Popup>
-                    <div style={{ color: '#333' }}>
-                      <strong>{foco.municipio}{foco.uf ? ` - ${foco.uf}` : ''}{foco.pais ? ` · ${foco.pais}` : ''}</strong><br/>
-                      FRP: {foco.frp_megawatts} MW<br/>
-                      Risco: {foco.risco_fogo}<br/>
+                  <Popup className="custom-popup">
+                    <div style={{ textAlign: 'center', minWidth: '120px' }}>
+                      <strong style={{ fontSize: '14px' }}>{getLocationLabel(foco)}</strong>
+                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      Temp Atual: {foco.temperatura_media}°C<br/>
+                      Mín/Máx: {foco.temperatura_min}°C / {foco.temperatura_max}°C<br/>
+                      Umidade: {foco.umidade_media}%<br/>
                       Data: {foco.data_completa}
+                    </div>
                     </div>
                   </Popup>
                 </CircleMarker>
@@ -292,165 +288,83 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Gráficos — Grid 2x2 */}
+      {/* Rankings de Temperaturas Extremas */}
       <div className="charts-grid">
-        {/* Gráfico de barras — focos por bioma */}
         <div className="panel">
-          <div className="panel-title">
-            <BarChart3 size={14} />
-            Focos por Bioma
+          <div className="panel-title" style={{ color: '#ef4444' }}>
+            <ThermometerSun size={14} />
+            Top 10: Mais Quentes
           </div>
           {loading ? (
-            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Carregando dados...
-            </div>
-          ) : dadosBioma.length === 0 ? (
-            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Execute o ETL para popular o banco com dados do INPE
-            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Carregando...</p>
+          ) : topQuentes.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Nenhum dado disponível.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={dadosBioma} layout="vertical" margin={{ left: 10 }}>
-                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis dataKey="bioma" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                  {dadosBioma.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? '#f97316' : `rgba(249,115,22,${Math.max(0.3, 0.8 - i * 0.12)})`} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Gráfico de barras — top estados */}
-        <div className="panel">
-          <div className="panel-title">
-            <BarChart3 size={14} />
-            Top Estados (Focos)
-          </div>
-          {loading ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Carregando dados...
-            </div>
-          ) : topUF.length === 0 ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Execute o ETL para popular o banco com dados do INPE
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={topUF} layout="vertical" margin={{ left: 0 }}>
-                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis dataKey="chave" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="total_focos" radius={[0, 4, 4, 0]}>
-                  {topUF.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? '#3b82f6' : `rgba(59,130,246,${Math.max(0.3, 0.9 - i * 0.1)})`} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Gráfico — Temperatura por Continente */}
-        <div className="panel">
-          <div className="panel-title">
-            <Thermometer size={14} />
-            Temperatura por Continente
-          </div>
-          {loading ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Carregando dados...
-            </div>
-          ) : dadosTempContinente.length === 0 ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Dados indisponíveis — Execute o ETL de Clima (Open-Meteo)
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={dadosTempContinente} layout="vertical" margin={{ left: 10 }}>
-                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} unit="°C" />
-                <YAxis dataKey="continente" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
-                <Tooltip content={<TempTooltip />} />
-                <Bar dataKey="temp_media" radius={[0, 4, 4, 0]}>
-                  {dadosTempContinente.map((d, i) => {
-                    // Gradiente: azul para frio, vermelho para quente
-                    const temp = d.temp_media;
-                    const color = temp <= 0 ? '#3b82f6' : temp <= 15 ? '#06b6d4' : temp <= 25 ? '#f59e0b' : '#ef4444';
-                    return <Cell key={i} fill={color} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Gráfico — Qualidade do Ar por Continente */}
-        <div className="panel">
-          <div className="panel-title">
-            <Wind size={14} />
-            Qualidade do Ar por Continente
-          </div>
-          {loading ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Carregando dados...
-            </div>
-          ) : dadosArContinente.length === 0 ? (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-              Dados indisponíveis — Execute o ETL de Qualidade do Ar (OpenWeather)
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={dadosArContinente} layout="vertical" margin={{ left: 10 }}>
-                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis dataKey="continente" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
-                <Tooltip content={<AqiTooltip />} />
-                <Bar dataKey="aqi_medio" radius={[0, 4, 4, 0]}>
-                  {dadosArContinente.map((d, i) => {
-                    // Verde para bom, amarelo para moderado, vermelho para ruim
-                    const aqi = d.aqi_medio;
-                    const color = aqi <= 50 ? '#10b981' : aqi <= 100 ? '#f59e0b' : '#ef4444';
-                    return <Cell key={i} fill={color} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      {/* Ranking de Estados */}
-      <div className="panel">
-        <div className="panel-title">
-          <Flame size={14} />
-          Ranking Completo por Estado
-        </div>
-        {loading ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Carregando...</p>
-        ) : topUF.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-            Nenhum dado disponível. Execute o ETL primeiro.
-          </p>
-        ) : (
-          <div className="rank-list">
-            {topUF.map((item, i) => (
-              <div className="rank-item" key={item.chave}>
-                <span className="rank-pos">#{i + 1}</span>
-                <span className="rank-label">{item.chave}</span>
-                <div className="rank-bar-wrap">
-                  <div
-                    className="rank-bar-fill"
-                    style={{ width: `${(item.total_focos / maxUF) * 100}%` }}
-                  />
+            <div className="rank-list">
+              {topQuentes.map((item, i) => (
+                <div 
+                  className="rank-item" 
+                  key={item.id_clima}
+                  onClick={() => {
+                    if (item.latitude && item.longitude) {
+                      setMapFocus([parseFloat(item.latitude), parseFloat(item.longitude)]);
+                      setActiveFoco(item);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                  title="Clique para ver no mapa"
+                >
+                  <span className="rank-pos">#{i + 1}</span>
+                  <span className="rank-label">
+                    {getLocationLabel(item)}
+                  </span>
+                  <span className="rank-value" style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                    {item.temperatura_max}°C
+                  </span>
                 </div>
-                <span className="rank-value">{item.total_focos.toLocaleString('pt-BR')}</span>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <div className="panel-title" style={{ color: '#3b82f6' }}>
+            <Snowflake size={14} />
+            Top 10: Mais Frios
           </div>
-        )}
+          {loading ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Carregando...</p>
+          ) : topFrios.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Nenhum dado disponível.</p>
+          ) : (
+            <div className="rank-list">
+              {topFrios.map((item, i) => (
+                <div 
+                  className="rank-item" 
+                  key={item.id_clima}
+                  onClick={() => {
+                    if (item.latitude && item.longitude) {
+                      setMapFocus([parseFloat(item.latitude), parseFloat(item.longitude)]);
+                      setActiveFoco(item);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                  title="Clique para ver no mapa"
+                >
+                  <span className="rank-pos">#{i + 1}</span>
+                  <span className="rank-label">
+                    {getLocationLabel(item)}
+                  </span>
+                  <span className="rank-value" style={{ color: '#3b82f6', fontWeight: 'bold' }}>
+                    {item.temperatura_min}°C
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
     </div>
   );
 }

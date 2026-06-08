@@ -37,6 +37,8 @@ def _base_query(db: Session):
             DimLocalidade.municipio,
             DimLocalidade.pais,
             DimLocalidade.continente,
+            DimLocalidade.latitude_ref.label("latitude"),
+            DimLocalidade.longitude_ref.label("longitude"),
         )
         .join(DimTempo,      FatoClima.id_tempo      == DimTempo.id_tempo)
         .join(DimLocalidade, FatoClima.id_localidade == DimLocalidade.id_localidade)
@@ -104,6 +106,8 @@ def listar_clima(
         municipio=r.municipio,
         pais=r.pais,
         continente=r.continente,
+        latitude=r.latitude,
+        longitude=r.longitude,
     ) for r in rows]
 
 
@@ -151,3 +155,49 @@ def resumo_clima(
         data_inicio=agg.data_inicio if agg else None,
         data_fim=agg.data_fim if agg else None,
     )
+
+
+@router.get("/extremas", response_model=list[ClimaOut], summary="Listar Temperaturas Extremas")
+def listar_extremas(
+    data_inicio: Optional[date] = Query(None, description="Data inicial (YYYY-MM-DD)"),
+    data_fim:    Optional[date] = Query(None, description="Data final (YYYY-MM-DD)"),
+    pais:        Optional[str]  = Query(None, description="Filtrar por país"),
+    continente:  Optional[str]  = Query(None, description="Filtrar por continente"),
+    limit:       int            = Query(100, ge=1, le=1000, description="Máx. de registros"),
+    offset:      int            = Query(0, ge=0, description="Paginação: início"),
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna todos os registros climáticos ordenados por extremidade:
+    temperaturas mais distantes de 20°C aparecem primeiro.
+    """
+    query = _base_query(db)
+    query = _apply_filters(query, data_inicio, data_fim, pais, continente)
+    
+    # Ordena por extremidade (distância da temperatura média em relação a 20°C)
+    # Ex: 40°C = abs(20) = 20 de distância. -10°C = abs(-30) = 30 de distância.
+    query = query.order_by(
+        func.abs(FatoClima.temperatura_media - 20).desc(),
+        DimTempo.data_completa.desc()
+    )
+    
+    rows = query.offset(offset).limit(limit).all()
+    return [ClimaOut(
+        id_clima=r.id_clima,
+        temperatura_media=r.temperatura_media,
+        temperatura_max=r.temperatura_max,
+        temperatura_min=r.temperatura_min,
+        umidade_media=r.umidade_media,
+        precipitacao_mm=r.precipitacao_mm,
+        velocidade_vento=r.velocidade_vento,
+        direcao_vento=r.direcao_vento,
+        pressao_hpa=r.pressao_hpa,
+        radiacao_solar=r.radiacao_solar,
+        data_completa=r.data_completa,
+        municipio=r.municipio,
+        pais=r.pais,
+        continente=r.continente,
+        latitude=r.latitude,
+        longitude=r.longitude,
+    ) for r in rows]
+
