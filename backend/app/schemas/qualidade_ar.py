@@ -30,6 +30,8 @@ class QualidadeArOut(BaseModel):
     municipio:       Optional[str]     = None
     pais:            Optional[str]     = None
     continente:      Optional[str]     = None
+    latitude:        Optional[Decimal] = None
+    longitude:       Optional[Decimal] = None
 
 
 class ResumoQualidadeArOut(BaseModel):

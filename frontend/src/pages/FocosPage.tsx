@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Thermometer, ChevronLeft, ChevronRight, Filter, X, Download, ThermometerSun, Snowflake } from 'lucide-react';
+import { Thermometer, Filter, X, Download, ThermometerSun, Snowflake } from 'lucide-react';
 import { api, type ClimaItem, type PaisOut, type ContinenteOut } from '../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
 import './FocosPage.css';
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 1000;
+
+const formatLocationName = (str: string | null) => {
+  if (!str) return '';
+  const prepositions = ['de', 'da', 'do', 'das', 'dos', 'e'];
+  return str.toLowerCase().split(' ').map((word, index) => {
+    if (index > 0 && prepositions.includes(word)) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }).join(' ');
+};
 
 export default function FocosPage() {
   const [data, setData] = useState<ClimaItem[]>([]);
@@ -14,6 +23,14 @@ export default function FocosPage() {
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Agrupa os dados processados na página atual por país
+  const groupedData = data.reduce((acc, item) => {
+    const country = item.pais || 'Desconhecido';
+    if (!acc[country]) acc[country] = [];
+    acc[country].push(item);
+    return acc;
+  }, {} as Record<string, ClimaItem[]>);
 
   // Filtros
   const [dataInicio, setDataInicio] = useState('');
@@ -125,6 +142,11 @@ export default function FocosPage() {
   const hasActiveFilters = dataInicio || dataFim || pais || continente;
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
 
+  // Cálculos de KPI
+  const maxTempObj = data.length > 0 ? data.reduce((prev, current) => (Number(prev.temperatura_max) > Number(current.temperatura_max)) ? prev : current) : null;
+  const minTempObj = data.length > 0 ? data.reduce((prev, current) => (Number(prev.temperatura_min) < Number(current.temperatura_min)) ? prev : current) : null;
+  const totalAlerts = data.length;
+
   return (
     <div className="focos-page">
       {/* Header */}
@@ -217,104 +239,145 @@ export default function FocosPage() {
         </div>
       )}
 
-      {/* Tabela */}
-      <div className="focos-table-wrap panel">
+      {/* KPIs */}
+      <div className="focos-kpi-row">
+        <div className="kpi-card hot">
+          <div className="kpi-icon"><ThermometerSun size={24} /></div>
+          <div className="kpi-content">
+            <span className="kpi-label">Pico de Calor</span>
+            <span className="kpi-value">{maxTempObj ? `${Number(maxTempObj.temperatura_max).toFixed(1)}°C` : '—'}</span>
+            <span className="kpi-desc">{maxTempObj ? formatLocationName(maxTempObj.municipio || maxTempObj.pais) : 'Sem dados'}</span>
+          </div>
+        </div>
+        <div className="kpi-card cold">
+          <div className="kpi-icon"><Snowflake size={24} /></div>
+          <div className="kpi-content">
+            <span className="kpi-label">Pico de Frio</span>
+            <span className="kpi-value">{minTempObj ? `${Number(minTempObj.temperatura_min).toFixed(1)}°C` : '—'}</span>
+            <span className="kpi-desc">{minTempObj ? formatLocationName(minTempObj.municipio || minTempObj.pais) : 'Sem dados'}</span>
+          </div>
+        </div>
+        <div className="kpi-card neutral">
+          <div className="kpi-icon"><Thermometer size={24} /></div>
+          <div className="kpi-content">
+            <span className="kpi-label">Alertas Globais</span>
+            <span className="kpi-value">{totalAlerts}</span>
+            <span className="kpi-desc">Cidades em extremos listadas</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid Bento Box */}
+      <div className="bento-container panel">
         <div className="focos-table-header">
           <span className="focos-table-count">
-            {loading ? 'Carregando...' : `${data.length} registros exibidos`}
-            {hasActiveFilters && ' (filtrado)'}
+            {loading ? 'Analisando satélites...' : `${data.length} localidades extremas mapeadas na página`}
+            {hasActiveFilters && ' (com filtro ativo)'}
           </span>
           <span className="focos-table-page">Página {currentPage}</span>
         </div>
 
-        <div className="focos-table-scroll">
-          <table className="focos-table">
-            <thead>
-              <tr>
-                <th>Tipo</th>
-                <th>Data</th>
-                <th>País</th>
-                <th>Continente</th>
-                <th>Município</th>
-                <th>Lat</th>
-                <th>Lon</th>
-                <th>Temp Máx</th>
-                <th>Temp Mín</th>
-                <th>Precip (mm)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i} className="skeleton-row">
-                    {Array.from({ length: 10 }).map((_, j) => (
-                      <td key={j}><div className="skeleton-cell" /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : data.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="focos-empty">
-                    <Thermometer size={20} />
-                    <span>Nenhum registro extremo encontrado no período.</span>
-                  </td>
-                </tr>
-              ) : (
-                data.map(item => {
-                  const isHot = Number(item.temperatura_max) >= 35;
-                  const isCold = Number(item.temperatura_min) <= 0;
-                  const renderTipo = () => {
-                    if (isHot) return <span className="tipo-badge hot"><ThermometerSun size={12}/> Calor</span>;
-                    if (isCold) return <span className="tipo-badge cold"><Snowflake size={12}/> Frio</span>;
-                    return '—';
-                  };
+        <div className="bento-grid">
+          {loading ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
+              Carregando dados globais...
+            </div>
+          ) : data.length === 0 ? (
+            <div className="focos-empty" style={{ gridColumn: '1 / -1' }}>
+              <Thermometer size={20} />
+              <span>Nenhum registro extremo encontrado com os filtros atuais.</span>
+            </div>
+          ) : (
+            Object.entries(groupedData)
+              .sort(([countryA], [countryB]) => {
+                if (countryA === 'Antártica') return 1;
+                if (countryB === 'Antártica') return -1;
+                return countryA.localeCompare(countryB);
+              })
+              .map(([country, items]) => {
+                // Filtra cidades duplicadas no mesmo país para não repetir ex: "Antártica" 10 vezes
+                const uniqueItemsMap = new Map();
+                for (const item of items) {
+                  const cityName = (item.pais === 'Brasil' && !item.municipio?.startsWith('Grid')) 
+                    ? formatLocationName(item.municipio) 
+                    : formatLocationName(item.pais);
+                  
+                  // Se a cidade já existe, mantemos a que tem a temperatura mais extrema (maior max ou menor min)
+                  if (uniqueItemsMap.has(cityName)) {
+                    const existing = uniqueItemsMap.get(cityName);
+                    const existingMax = Number(existing.temperatura_max) || 0;
+                    const existingMin = Number(existing.temperatura_min) || 0;
+                    const itemMax = Number(item.temperatura_max) || 0;
+                    const itemMin = Number(item.temperatura_min) || 0;
+                    
+                    const existingExtreme = Math.max(Math.abs(existingMax), Math.abs(existingMin));
+                    const itemExtreme = Math.max(Math.abs(itemMax), Math.abs(itemMin));
+                    
+                    if (itemExtreme > existingExtreme) {
+                      uniqueItemsMap.set(cityName, { ...item, cityName });
+                    }
+                  } else {
+                    uniqueItemsMap.set(cityName, { ...item, cityName });
+                  }
+                }
+                const uniqueItems = Array.from(uniqueItemsMap.values());
 
-                  return (
-                    <tr key={item.id_clima}>
-                      <td>{renderTipo()}</td>
-                      <td>{item.data_completa ?? '—'}</td>
-                      <td><span className="pais-badge">{item.pais ?? '—'}</span></td>
-                      <td><span className="continente-badge">{item.continente ?? '—'}</span></td>
-                      <td>{(item.pais === 'Brasil' && !item.municipio?.startsWith('Grid')) ? item.municipio : <span style={{color:'#666'}}>{item.pais}</span>}</td>
-                      <td className="td-num">{Number(item.latitude).toFixed(4)}</td>
-                      <td className="td-num">{Number(item.longitude).toFixed(4)}</td>
-                      <td className="td-num" style={{ color: isHot ? '#ef4444' : 'inherit', fontWeight: isHot ? 600 : 400 }}>
-                        {item.temperatura_max ? `${Number(item.temperatura_max).toFixed(1)}°C` : '—'}
-                      </td>
-                      <td className="td-num" style={{ color: isCold ? '#3b82f6' : 'inherit', fontWeight: isCold ? 600 : 400 }}>
-                        {item.temperatura_min ? `${Number(item.temperatura_min).toFixed(1)}°C` : '—'}
-                      </td>
-                      <td className="td-num">{item.precipitacao_mm ?? '—'}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                // Verifica a tendência do país (se tem mais frio ou calor)
+                const hotCount = uniqueItems.filter(i => Number(i.temperatura_max) >= 35).length;
+                const coldCount = uniqueItems.filter(i => Number(i.temperatura_min) <= 0).length;
+                const theme = hotCount > coldCount ? 'theme-hot' : (coldCount > hotCount ? 'theme-cold' : 'theme-neutral');
+
+                return (
+                  <div key={country} className={`bento-card ${theme}`}>
+                    <div className="bento-card-header">
+                      <h3 className="bento-country">{country}</h3>
+                      <span className="bento-badge">{uniqueItems.length} locais</span>
+                    </div>
+                    <div className="bento-card-body">
+                      {uniqueItems.map(item => {
+                        const maxT = Number(item.temperatura_max) || 0;
+                        const minT = Number(item.temperatura_min) || 0;
+                        const cityName = item.cityName;
+
+                        // Calcula % da barra considerando um range de -20 a 50
+                        const rangeMin = -20;
+                        const rangeMax = 50;
+                        const rangeTotal = rangeMax - rangeMin;
+                        
+                        const isHot = maxT >= 35;
+                        const isCold = minT <= 0;
+                        const displayTemp = isHot ? maxT : (isCold ? minT : Math.max(maxT, minT));
+                        
+                        const styleClass = displayTemp >= 28 ? 'hot' : (displayTemp <= 15 ? 'cold' : 'neutral');
+                        
+                        let pct = ((displayTemp - rangeMin) / rangeTotal) * 100;
+                        if (pct < 0) pct = 0;
+                        if (pct > 100) pct = 100;
+
+                        return (
+                          <div key={item.id_clima} className="bento-city-item">
+                            <div className="bento-city-info">
+                              <span className="city-name" title={cityName}>{cityName}</span>
+                              <span className={`city-temp ${styleClass}-text`}>
+                                {displayTemp.toFixed(1)}°C
+                              </span>
+                            </div>
+                            <div className="temp-bar-bg">
+                              <div 
+                                className={`temp-bar-fill fill-${styleClass}`} 
+                                style={{ width: `${pct}%` }} 
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+            })
+          )}
         </div>
 
-        {/* Paginação */}
-        {!loading && data.length > 0 && (
-          <div className="focos-pagination">
-            <button
-              className="pagination-btn"
-              disabled={offset === 0}
-              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-            >
-              <ChevronLeft size={14} />
-              Anterior
-            </button>
-            <span className="pagination-info">Página {currentPage}</span>
-            <button
-              className="pagination-btn"
-              disabled={data.length < PAGE_SIZE}
-              onClick={() => setOffset(offset + PAGE_SIZE)}
-            >
-              Próxima
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

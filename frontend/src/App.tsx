@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
 import FocosPage from './pages/FocosPage';
+import QualidadeArPage from './pages/QualidadeArPage';
 import LocalidadesPage from './pages/LocalidadesPage';
 import SatelitesPage from './pages/SatelitesPage';
 import ConfiguracoesPage from './pages/ConfiguracoesPage';
@@ -33,6 +34,7 @@ export default function App() {
     switch (activePage) {
       case 'dashboard':     return <DashboardPage />;
       case 'anomalias':     return <FocosPage />;
+      case 'qualidade_ar':  return <QualidadeArPage />;
       case 'localidades':   return <LocalidadesPage />;
       case 'satelites':     return <SatelitesPage />;
       case 'configuracoes': return <ConfiguracoesPage />;

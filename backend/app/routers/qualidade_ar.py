@@ -37,6 +37,8 @@ def _base_query(db: Session):
             DimLocalidade.municipio,
             DimLocalidade.pais,
             DimLocalidade.continente,
+            DimLocalidade.latitude_ref.label("latitude"),
+            DimLocalidade.longitude_ref.label("longitude"),
         )
         .join(DimTempo,      FatoQualidadeAr.id_tempo      == DimTempo.id_tempo)
         .join(DimLocalidade, FatoQualidadeAr.id_localidade == DimLocalidade.id_localidade)
@@ -104,6 +106,8 @@ def listar_qualidade_ar(
         municipio=r.municipio,
         pais=r.pais,
         continente=r.continente,
+        latitude=r.latitude,
+        longitude=r.longitude,
     ) for r in rows]
 
 

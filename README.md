@@ -1,188 +1,80 @@
 # AtmosMetrics
 
-> Sistema de monitoramento socioambiental com dados do INPE — Projeto Dev Web II
+![AtmosMetrics Banner](https://via.placeholder.com/1200x300.png?text=AtmosMetrics+-+Monitoramento+Socioambiental+Global)
 
-## 📌 Status Atual
-
-**Fase 1 — Banco de Dados: ✅ CONCLUÍDA**
-
-**Fases 2 e 3 — ETL e Backend API: ✅ CONCLUÍDAS**
-
-**Fase 4 — Frontend / Dashboard: ✅ CONCLUÍDA**
-
-**Próxima etapa → Fase 5: Páginas internas (Focos de Calor, Localidades, Satélites)**
+> Sistema corporativo de monitoramento socioambiental, climático e de qualidade do ar em tempo real, baseado em dados oficiais de agências espaciais e ambientais.
 
 ---
 
-## 🎯 Sobre o Projeto
+## 🌍 Visão Geral
 
-O **AtmosMetrics** é uma plataforma web para centralizar, processar e visualizar dados críticos de monitoramento ambiental do Brasil, com foco inicial em **focos de calor (queimadas)** fornecidos pelo INPE.
+O **AtmosMetrics** é uma plataforma analítica projetada para fornecer uma visão de alto nível sobre indicadores cruciais do nosso planeta. Integrando dados em tempo real, o sistema processa informações sobre focos de incêndio, índices de qualidade do ar (AQI), anomalias térmicas e clima, apresentando-os em um painel interativo e imersivo.
 
-**Fontes de dados:**
-- **INPE / Programa Queimadas** → focos de calor detectados por satélite
-- **IBGE** → dados geográficos e socioeconômicos
-
-**Stack utilizada:**
-- **Banco de dados:** PostgreSQL 16 + PostGIS 3.4 (via Docker)
-- **ETL e Backend:** Python + FastAPI + SQLAlchemy + Pydantic
-- **Frontend / Dashboard:** React 19 + TypeScript + Vite + Recharts
+Nossa missão com o AtmosMetrics é democratizar o acesso a dados ambientais densos e técnicos, transformando-os em visualizações atraentes que facilitam a tomada de decisão para ambientalistas, governos e empresas.
 
 ---
 
-## 🏗️ Arquitetura do Banco de Dados (Star Schema)
+## 🏛️ Arquitetura do Sistema
 
-```
-             ┌──────────────┐
-             │  dim_tempo   │
-             │  (Quando?)   │
-             └──────┬───────┘
-                    │ FK
-┌──────────────┐    │    ┌──────────────────────────┐
-│ dim_satelite │────┼────│  fato_anomalia_termica   │
-│  (Quem?)     │  FK│ FK │  (O foco de calor!)      │
-└──────────────┘    │    └──────────────────────────┘
-                    │ FK
-             ┌──────┴────────┐
-             │dim_localidade │
-             │   (Onde?)     │
-             └───────────────┘
-```
+O projeto adota uma arquitetura conteinerizada moderna (Docker), segmentada em três grandes pilares:
 
-### Tabelas criadas
+### 1. Banco de Dados e Data Warehouse
+Utilizamos **PostgreSQL 16** com a extensão espacial **PostGIS 3.4** para armazenamento e cruzamento geográfico dos dados. 
+O modelo de dados é construído sob a premissa de um *Star Schema* (Data Warehouse) otimizado para agregações analíticas rápidas:
+- **Tabelas Fato:** Focos de Calor, Clima e Qualidade do Ar (AQI).
+- **Tabelas Dimensão:** Tempo, Satélites e Localidades.
 
-| Tabela | Tipo | Descrição |
-|---|---|---|
-| `dim_tempo` | Dimensão | Hierarquia temporal (dia/mês/ano/trimestre/semestre) |
-| `dim_satelite` | Dimensão | 13 satélites do INPE pré-cadastrados |
-| `dim_localidade` | Dimensão | 27 estados + biomas + regiões pré-cadastrados |
-| `fato_anomalia_termica` | Fato | Registros de focos de calor com coordenadas PostGIS |
+### 2. Back-end e Pipeline ETL
+O back-end foi desenvolvido em **Python 3.12** utilizando **FastAPI**.
+Ele opera como o orquestrador do sistema, expondo rotas RESTful síncronas e assíncronas que alimentam o Dashboard.
+Além da API, o Back-end abriga nossos **Pipelines de ETL (Extract, Transform, Load)** que capturam dados brutos das seguintes fontes:
+- **INPE (Instituto Nacional de Pesquisas Espaciais):** Focos de calor ativos em solo Brasileiro via Satélites.
+- **OpenWeatherMap:** Informações globais de qualidade do ar (PM2.5, PM10, Monóxido de Carbono).
+- **Open-Meteo:** Dados climáticos globais (Vento, Temperatura).
+
+### 3. Front-end e Dashboard Interativo
+A interface do usuário é construída com **React 19** e **Vite**, adotando o poder da tipagem estática do **TypeScript**.
+Focada puramente em *User Experience (UX)* e *User Interface (UI)* de alta qualidade, a interface apresenta:
+- **Painéis (Bento Box Grids):** Visualizações limpas inspiradas no design moderno de aplicativos.
+- **Mapas Interativos GIS (Leaflet):** Mapas topográficos e de satélite interativos que sobrepõem polígonos, heatmaps e partículas de vento georreferenciadas globalmente (arquitetura semelhante a projetos como IQAir e Earth Nullschool).
+- **Gráficos Dinâmicos (Recharts):** Métricas acompanhadas visualmente.
 
 ---
 
-## 🚀 Setup — Nova Máquina
+## 🚀 Tecnologias e Stack
 
-### Pré-requisitos
-- [ ] [Git](https://git-scm.com/downloads) instalado
-- [ ] [Docker Desktop](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe) instalado e rodando
-- [ ] [Node.js 20+](https://nodejs.org/) instalado (para rodar o frontend)
+**Infraestrutura:**
+- Docker & Docker Compose
 
-### Passo a passo
+**Back-end:**
+- Python 3.12
+- FastAPI
+- SQLAlchemy (ORM)
+- Pydantic (Validação de Schemas)
+- httpx (Requisições assíncronas de ETL)
 
-```bash
-# 1. Clone o repositório
-git clone https://github.com/Luiz-HenriqueGomes/AtmosMetrics-Dev-Web-II.git AtmosMetrics
-cd AtmosMetrics
+**Front-end:**
+- React 19
+- TypeScript
+- Vite
+- React Leaflet (Mapas interativos)
+- Leaflet Velocity (Física de partículas de vento)
+- Recharts (Gráficos)
+- Lucide React (Ícones)
+- CSS Vanilla (Sistema de design sólido e flexível)
 
-# 2. Configure o Git
-git config --global user.name "Luiz-HenriqueGomes"
-git config --global user.email "luiz12henrique21@gmail.com"
-
-# 3. Crie o arquivo .env com as credenciais
-# Crie manualmente o arquivo .env na raiz do projeto com o conteúdo:
-# POSTGRES_DB=atmos_db
-# POSTGRES_USER=atmos_user
-# POSTGRES_PASSWORD=atmos_dev_secure123
-# PGADMIN_EMAIL=admin@atmosmetrics.com
-# PGADMIN_PASSWORD=admin123
-
-# 4. Suba o banco de dados e a API (via Docker)
-docker compose up -d --build
-
-# 5. Instale as dependências do frontend
-cd frontend
-npm install
-
-# 6. Rode o frontend (em outro terminal)
-npm run dev
-```
-
-**Resultado esperado:**
-- API disponível em: http://localhost:8000/docs (Swagger UI)
-- Dashboard disponível em: http://localhost:5173
-
-### Popular o banco com dados do INPE
-
-Após subir os serviços, acesse http://localhost:8000/docs, encontre o endpoint `POST /api/v1/etl/executar-sync`, clique em **Try it out** → **Execute**. O ETL baixará os dados de focos de calor do INPE automaticamente.
+**Banco de Dados:**
+- PostgreSQL 16
+- PostGIS 3.4
 
 ---
 
-## 📋 Roadmap do Projeto
+## 🛡️ Princípios de Design
 
-### Fase 1 — Banco de Dados ✅
-- [x] Modelagem Star Schema com PostGIS
-- [x] Docker Compose para PostgreSQL 16
-- [x] Pré-população: 27 estados brasileiros + 13 satélites INPE
-- [x] Índices espaciais e trigger automático de geom
-
-### Fase 2 — ETL ✅
-- [x] Script Python para consumir arquivos diários do INPE (focos de calor)
-- [x] Transformação das strings, lat/lon e extração de data/hora
-- [x] Carga Upsert na `fato_anomalia_termica`, `dim_tempo`, `dim_localidade` e `dim_satelite`
-- [x] Endpoint de disparo manual configurado (`/api/v1/etl/executar-sync`)
-
-### Fase 3 — Backend / API ✅
-- [x] Configuração FastAPI no Docker com hot-reload
-- [x] Conexão com o PostGIS via GeoAlchemy2
-- [x] Modelos ORM e Schemas Pydantic mapeando o Star Schema
-- [x] Endpoint de Anomalias com paginação e filtros (data, uf, bioma, satélite)
-- [x] Endpoint de Resumos e Agregadores para o Dashboard
-
-### Fase 4 — Frontend / Dashboard ✅
-- [x] Setup React 19 + TypeScript + Vite
-- [x] Design system Dark Mode com Glassmorphism (paleta ambiental exclusiva)
-- [x] Tipografia Inter + gradientes atmosféricos + scrollbar customizada
-- [x] Sidebar de navegação com indicador de status da API em tempo real
-- [x] StatCards animados (shimmer loading + hover flutuante)
-- [x] Gráfico de barras: focos por bioma (Recharts)
-- [x] Gráfico de barras: top estados por quantidade de focos (Recharts)
-- [x] Ranking completo de estados com barra de progresso animada
-- [x] Integração real com a API FastAPI (`/api/v1/anomalias/resumo`)
-- [x] Correção do ETL: novo padrão de nome de arquivo do INPE (`focos_diario_br_`)
-- [x] Correção do ETL: mapeamento de estados em maiúsculas
-
-### Fase 5 — Páginas Internas 🔜
-- [ ] Página "Focos de Calor" — tabela paginada e filtrável
-- [ ] Página "Localidades" — estados e biomas com contagem de focos
-- [ ] Página "Satélites" — lista dos satélites do INPE
-- [ ] Página "Configurações" — painel de disparo do ETL
+1. **Aesthetics & UX:** Acreditamos que relatórios ambientais não precisam ser monótonos. Utilizamos paletas *Dark Mode*, *Glassmorphism* sutil e animações de estado fluidas.
+2. **Performático:** Utilização do FastAPI assíncrono e Vite (Rollup) no React para garantir que os dados carreguem quase que instantaneamente.
+3. **Escalável e Modulável:** Toda a ingestão de dados (ETL) e a arquitetura das APIs são segmentadas para que novos painéis (ex: Monitoramento de Desmatamento, Chuvas) possam ser acoplados rapidamente no futuro.
 
 ---
 
-## 📁 Estrutura do Projeto
-
-```
-AtmosMetrics/
-├── .env                        # Variáveis de ambiente (NÃO está no GitHub)
-├── .gitignore                  # .env e node_modules protegidos
-├── docker-compose.yml          # PostgreSQL 16 + Backend API
-├── README.md                   # Este arquivo
-├── backend/
-│   ├── app/                    # Rotas, modelos ORM, schemas (FastAPI)
-│   ├── etl/                    # Scripts de ingestão de dados do INPE
-│   ├── Dockerfile              # Imagem do servidor web (API)
-│   └── requirements.txt        # Dependências Python
-├── frontend/
-│   ├── src/
-│   │   ├── components/         # Sidebar, StatCard
-│   │   ├── pages/              # DashboardPage (e futuras)
-│   │   ├── services/           # api.ts — camada de comunicação com o backend
-│   │   ├── App.tsx             # Roteamento e layout raiz
-│   │   └── index.css           # Design system global
-│   ├── package.json
-│   └── vite.config.ts
-└── database/
-    ├── README.md               # Documentação do banco
-    └── init/
-        ├── 01_schema.sql       # Criação do Star Schema
-        └── 02_populate.sql     # Seed das dimensões
-```
-
----
-
-## ℹ️ Contexto para o Antigravity (nova máquina)
-
-Ao abrir este projeto em uma nova instalação do Antigravity, informe:
-
-> *"Leia o README.md e continue o projeto AtmosMetrics. As Fases 1 a 4 estão concluídas (Banco + ETL + API backend + Dashboard Frontend). Precisamos agora implementar a Fase 5: as páginas internas do dashboard (Focos de Calor, Localidades, Satélites e Configurações)."*
-
-O Antigravity vai ler o workspace e terá todo o contexto necessário para continuar.
+*Desenvolvido como projeto em Dev Web II, com foco na consolidação de arquiteturas web escaláveis e interativas.*

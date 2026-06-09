@@ -1,4 +1,4 @@
-import { LayoutDashboard, Thermometer, MapPin, Satellite, Activity, Settings, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Thermometer, MapPin, Satellite, Activity, Settings, Sun, Moon, Wind } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'anomalias', label: 'Temperaturas Extremas', icon: Thermometer },
+  { id: 'qualidade_ar', label: 'Qualidade do Ar', icon: Wind },
   { id: 'localidades', label: 'Localidades', icon: MapPin },
   { id: 'satelites', label: 'Satélites', icon: Satellite },
 ];

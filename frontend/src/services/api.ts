@@ -155,6 +155,8 @@ export interface QualidadeArItem {
   municipio: string | null;
   pais: string | null;
   continente: string | null;
+  latitude: string | null;
+  longitude: string | null;
 }
 
 export interface ResumoQualidadeArResponse {
