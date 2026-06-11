@@ -2,122 +2,79 @@
 
 ![AtmosMetrics Banner](https://via.placeholder.com/1200x300.png?text=AtmosMetrics+-+Monitoramento+Socioambiental+Global)
 
-> Sistema corporativo e acadêmico de monitoramento socioambiental, climático e de qualidade do ar em tempo real, fundamentado em dados oficiais de agências espaciais e instituições meteorológicas globais.
+> Sistema corporativo de monitoramento socioambiental, climático e de qualidade do ar em tempo real, baseado em dados oficiais de agências espaciais e ambientais.
 
 ---
 
-## 🌍 Visão Geral do Projeto
+## 🌍 Visão Geral
 
-O **AtmosMetrics** é uma plataforma analítica robusta, concebida para fornecer uma visão de alto nível sobre indicadores cruciais do nosso planeta. Integrando dados em tempo real através de pipelines de ETL (Extract, Transform, Load), o sistema processa informações sobre:
-- **Anomalias Térmicas e Clima:** Monitoramento de picos de calor e frio extremos.
-- **Índices de Qualidade do Ar (AQI):** Acompanhamento de material particulado (PM2.5, PM10) e gases poluentes (O3, CO).
-- **Focos de Incêndio (Satélites):** Mapeamento ativo de queimadas.
+O **AtmosMetrics** é uma plataforma analítica projetada para fornecer uma visão de alto nível sobre indicadores cruciais do nosso planeta. Integrando dados em tempo real, o sistema processa informações sobre focos de incêndio, índices de qualidade do ar (AQI), anomalias térmicas e clima, apresentando-os em um painel interativo e imersivo.
 
-O projeto foi desenvolvido sob rigorosas práticas de engenharia de software e estruturado para ser escalável, modular e performático. O tratamento dos dados adota regras de negócio distintas para garantir o máximo de eficiência computacional e precisão geográfica, como o **processamento diferencial entre as localidades do Brasil e do resto do Mundo**.
+Nossa missão com o AtmosMetrics é democratizar o acesso a dados ambientais densos e técnicos, transformando-os em visualizações atraentes que facilitam a tomada de decisão para ambientalistas, governos e empresas.
 
 ---
 
-## 🏛️ Arquitetura de Software
+## 🏛️ Arquitetura do Sistema
 
-A solução adota uma arquitetura conteinerizada moderna (Docker) orientada a serviços, segmentada em três grandes pilares (Banco de Dados, Back-end e Front-end).
+O projeto adota uma arquitetura conteinerizada moderna (Docker), segmentada em três grandes pilares:
 
-```mermaid
-graph TD
-    subgraph Fontes Externas
-        API_INPE[API INPE BDQueimadas]
-        API_OWM[API OpenWeatherMap]
-        API_METEO[API Open-Meteo]
-    end
+### 1. Banco de Dados e Data Warehouse
+Utilizamos **PostgreSQL 16** com a extensão espacial **PostGIS 3.4** para armazenamento e cruzamento geográfico dos dados. 
+O modelo de dados é construído sob a premissa de um *Star Schema* (Data Warehouse) otimizado para agregações analíticas rápidas:
+- **Tabelas Fato:** Focos de Calor, Clima e Qualidade do Ar (AQI).
+- **Tabelas Dimensão:** Tempo, Satélites e Localidades.
 
-    subgraph "Docker: Arquitetura AtmosMetrics"
-        subgraph Back-end FastAPI
-            ETL_Jobs((Pipelines ETL))
-            API_Rest(Endpoints RESTful)
-        end
-        
-        subgraph Data Warehouse
-            DB[(PostgreSQL 16\n + PostGIS 3.4)]
-        end
-        
-        subgraph Front-end React
-            UI(React + Vite + TypeScript)
-            Mapas[React Leaflet GIS]
-        end
-    end
+### 2. Back-end e Pipeline ETL
+O back-end foi desenvolvido em **Python 3.12** utilizando **FastAPI**.
+Ele opera como o orquestrador do sistema, expondo rotas RESTful síncronas e assíncronas que alimentam o Dashboard.
+Além da API, o Back-end abriga nossos **Pipelines de ETL (Extract, Transform, Load)** que capturam dados brutos das seguintes fontes:
+- **INPE (Instituto Nacional de Pesquisas Espaciais):** Focos de calor ativos em solo Brasileiro via Satélites.
+- **OpenWeatherMap:** Informações globais de qualidade do ar (PM2.5, PM10, Monóxido de Carbono).
+- **Open-Meteo:** Dados climáticos globais (Vento, Temperatura).
 
-    API_INPE -->|Focos BR| ETL_Jobs
-    API_OWM -->|Qualidade do Ar Global| ETL_Jobs
-    API_METEO -->|Clima Global| ETL_Jobs
-    
-    ETL_Jobs -->|Tratamento e Carga| DB
-    DB -->|SQL Queries| API_Rest
-    API_Rest <-->|JSON Requests| UI
-    UI --> Mapas
-```
-
-### 1. Modelagem Multidimensional (Data Warehouse)
-O núcleo de dados utiliza **PostgreSQL 16** em conjunto com a extensão espacial **PostGIS 3.4**. O esquema de banco foi projetado utilizando a abordagem de **Star Schema**, otimizando a leitura e a geração de agregações estatísticas rápidas necessárias para os painéis (*dashboards*). 
-
-🔗 **[Ver Detalhes do Banco de Dados e Diagrama ER](./database/README.md)**
-
-### 2. Back-end e Regras de Negócio (ETL)
-O back-end foi construído em **Python 3.12** com **FastAPI**, servindo como o orquestrador do sistema. Ele é responsável tanto por expor a API de consulta quanto por gerenciar as complexas regras de extração e tratamento dos dados.
-
-**Regra de Negócio Central: Granularidade Brasil vs. Mundo**
-Devido à massiva quantidade de dados globais gerados diariamente, o sistema adota uma regra restritiva de granularidade espacial:
-- **Nível Global (Mundo):** O processamento limita-se à captura das capitais ou das cidades mais relevantes de cada país, assegurando um overview global sem sobrecarregar o processamento ou a renderização.
-- **Nível Regional (Brasil):** Devido à importância continental e ao rigor das análises ambientais, o Brasil é tratado com **alta granularidade**, capturando os dados em nível estadual e municipal.
-
-🔗 **[Ver Documentação da API e Fluxos de Ingestão](./backend/README.md)**
-
-### 3. Front-end e User Experience (UX)
-A interface é construída em **React 19**, **TypeScript** e **Vite**. A camada de apresentação é focada puramente na otimização de performance (*memoização de mapas*) e na entrega de uma Interface Visual (UI) imersiva. Utiliza *Bento Box Grids* e Mapas interativos da biblioteca **Leaflet** renderizados sobre Canvas HTML5.
-
-🔗 **[Ver Documentação do Front-end](./frontend/README.md)**
+### 3. Front-end e Dashboard Interativo
+A interface do usuário é construída com **React 19** e **Vite**, adotando o poder da tipagem estática do **TypeScript**.
+Focada puramente em *User Experience (UX)* e *User Interface (UI)* de alta qualidade, a interface apresenta:
+- **Painéis (Bento Box Grids):** Visualizações limpas inspiradas no design moderno de aplicativos.
+- **Mapas Interativos GIS (Leaflet):** Mapas topográficos e de satélite interativos que sobrepõem polígonos, heatmaps e partículas de vento georreferenciadas globalmente (arquitetura semelhante a projetos como IQAir e Earth Nullschool).
+- **Gráficos Dinâmicos (Recharts):** Métricas acompanhadas visualmente.
 
 ---
 
-## 🚀 Como Iniciar (Getting Started)
+## 🚀 Tecnologias e Stack
 
-O AtmosMetrics foi estruturado para subir de maneira "One-Click" utilizando Docker Compose.
+**Infraestrutura:**
+- Docker & Docker Compose
 
-### Pré-requisitos
-- [Docker](https://www.docker.com/) e [Docker Compose](https://docs.docker.com/compose/) instalados.
+**Back-end:**
+- Python 3.12
+- FastAPI
+- SQLAlchemy (ORM)
+- Pydantic (Validação de Schemas)
+- httpx (Requisições assíncronas de ETL)
 
-### Passos de Instalação
+**Front-end:**
+- React 19
+- TypeScript
+- Vite
+- React Leaflet (Mapas interativos)
+- Leaflet Velocity (Física de partículas de vento)
+- Recharts (Gráficos)
+- Lucide React (Ícones)
+- CSS Vanilla (Sistema de design sólido e flexível)
 
-1. **Clone o repositório:**
-   ```bash
-   git clone https://github.com/Luiz-HenriqueGomes/AtmosMetrics-Dev-Web-II.git
-   cd AtmosMetrics-Dev-Web-II
-   ```
-
-2. **Suba os containers:**
-   Isso compilará e iniciará os três serviços (`db`, `backend` e `frontend`).
-   ```bash
-   docker compose up --build
-   ```
-
-3. **Inicie o Pipeline de Dados (Opcional - Primeira Carga):**
-   Os scripts de banco já inicializam o esquema e uma vasta carga de *mock data* base. Porém, você pode invocar o pipeline real via Docker.
-   ```bash
-   docker compose exec backend bash scripts/06_trigger_etl.sh
-   ```
-
-4. **Acesso aos Serviços:**
-   - **Painel Front-end:** [http://localhost:5173](http://localhost:5173)
-   - **Documentação da API (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
-   - **Acesso Direto ao Banco:** `localhost:5432` (User: `atmos_user` | Pass: `atmos_pass` | DB: `atmos_db`)
+**Banco de Dados:**
+- PostgreSQL 16
+- PostGIS 3.4
 
 ---
 
-## 🛡️ Princípios de Design e Qualidade de Software
+## 🛡️ Princípios de Design
 
-1. **Eficiência e Assincronicidade:** Uso do FastAPI assíncrono e processamento de lotes paralelos nos pipelines ETL.
-2. **Separação de Contextos (SoC):** Desacoplamento rígido entre o motor de integração (ETL), o repositório de dados (PostgreSQL) e a camada de renderização (React).
-3. **Escalabilidade Analítica:** Um *Star Schema* bem construído permite que o banco de dados responda em milissegundos para junções complexas globais e históricas.
-4. **UX Premium:** Substituição das interfaces acadêmicas tradicionais por um design moderno e elegante utilizando *Dark Mode*, *Micro-animações* e *Glassmorphism*.
+1. **Aesthetics & UX:** Acreditamos que relatórios ambientais não precisam ser monótonos. Utilizamos paletas *Dark Mode*, *Glassmorphism* sutil e animações de estado fluidas.
+2. **Performático:** Utilização do FastAPI assíncrono e Vite (Rollup) no React para garantir que os dados carreguem quase que instantaneamente.
+3. **Escalável e Modulável:** Toda a ingestão de dados (ETL) e a arquitetura das APIs são segmentadas para que novos painéis (ex: Monitoramento de Desmatamento, Chuvas) possam ser acoplados rapidamente no futuro.
 
 ---
 
-*Projeto acadêmico desenvolvido na disciplina de Desenvolvimento Web II, com o objetivo de projetar, implementar e otimizar ecossistemas arquiteturais de ponta a ponta.*
+*Desenvolvido como projeto em Dev Web II, com foco na consolidação de arquiteturas web escaláveis e interativas.*
