@@ -1,79 +1,112 @@
-# AtmosMetrics — Database
+# Data Warehouse e Banco de Dados (PostgreSQL + PostGIS)
 
-## Visão Geral
+Esta camada compõe a infraestrutura persistente do AtmosMetrics. O banco de dados foi rigorosamente modelado seguindo os preceitos de modelagem multidimensional (Data Warehousing) para proporcionar respostas quase imediatas às requisições do sistema e do frontend.
 
-O banco de dados do AtmosMetrics utiliza o modelo **Star Schema** no **PostgreSQL 16** com a extensão **PostGIS 3.4** para suporte a dados geoespaciais.
+---
 
-## Arquitetura: Star Schema
+## 🗺️ Modelo Entidade-Relacionamento (ERD)
 
+A modelagem segue a arquitetura **Star Schema (Esquema Estrela)**, separando fortemente as tabelas Fato (O que aconteceu?) das tabelas Dimensão (Onde, quando e como aconteceu?).
+
+```mermaid
+erDiagram
+    %% Dimensões
+    dim_tempo {
+        int id_tempo PK
+        date data_completa
+        int ano
+        int mes
+        int dia
+        string trimestre
+        string dia_semana
+    }
+
+    dim_localidade {
+        int id_localidade PK
+        string pais
+        string continente
+        string municipio
+        string estado
+        string bioma
+        decimal latitude
+        decimal longitude
+    }
+
+    dim_satelite {
+        int id_satelite PK
+        string nome
+        string agencia_responsavel
+        string orbita
+    }
+
+    %% Fatos
+    fato_foco_incendio {
+        int id_foco PK
+        int id_tempo FK
+        int id_localidade FK
+        int id_satelite FK
+        int risco_fogo
+        int fpr
+    }
+
+    fato_clima {
+        int id_clima PK
+        int id_tempo FK
+        int id_localidade FK
+        decimal temperatura_media
+        decimal temperatura_max
+        decimal temperatura_min
+        decimal precipitacao_mm
+        decimal umidade_media
+        decimal velocidade_vento
+    }
+
+    fato_qualidade_ar {
+        int id_qualidade_ar PK
+        int id_tempo FK
+        int id_localidade FK
+        decimal aqi
+        decimal pm2_5
+        decimal pm10
+        decimal co
+        decimal o3
+    }
+
+    %% Relacionamentos
+    dim_tempo ||--o{ fato_foco_incendio : "registrado em"
+    dim_localidade ||--o{ fato_foco_incendio : "ocorre em"
+    dim_satelite ||--o{ fato_foco_incendio : "detectado por"
+
+    dim_tempo ||--o{ fato_clima : "registrado em"
+    dim_localidade ||--o{ fato_clima : "ocorre em"
+
+    dim_tempo ||--o{ fato_qualidade_ar : "registrado em"
+    dim_localidade ||--o{ fato_qualidade_ar : "ocorre em"
 ```
-             ┌──────────────┐
-             │  dim_tempo   │
-             │  (Quando?)   │
-             └──────┬───────┘
-                    │ FK
-┌──────────────┐    │    ┌─────────────────────────┐
-│ dim_satelite │────┼────│   fato_anomalia_termica  │
-│  (Quem?)     │  FK│ FK │  (O foco de calor!)     │
-└──────────────┘    │    └─────────────────────────┘
-                    │ FK
-             ┌──────┴────────┐
-             │ dim_localidade│
-             │   (Onde?)    │
-             └───────────────┘
-```
 
-## Pré-requisitos
+---
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e em execução
+## 🛠️ Tecnologias Utilizadas
 
-## Como Usar
+- **PostgreSQL 16:** O sistema de gerenciamento de banco de dados relacional.
+- **PostGIS 3.4:** Extensão de banco de dados espacial que confere suporte a objetos geográficos. Utilizado implicitamente para assegurar a consistência de dados baseados em longitude/latitude na `dim_localidade`.
 
-### 1. Configure as variáveis de ambiente
-Copie o arquivo de exemplo e edite com suas credenciais:
-```bash
-# O arquivo .env já vem com valores padrão para desenvolvimento
-# NÃO envie o .env para o GitHub!
-```
+---
 
-### 2. Suba o banco de dados
-```bash
-docker-compose up -d
-```
-O Docker irá:
-- Baixar a imagem `postgis/postgis:16-3.4-alpine`
-- Criar o container `atmosmetrics_db`
-- Executar os scripts em `database/init/` automaticamente
+## 📦 Scripts de Inicialização (Seed)
 
-### 3. Verifique se está rodando
-```bash
-docker-compose ps
-docker-compose logs db
-```
+O banco é povoado automaticamente no processo de levantamento dos *containers* Docker, executando todos os arquivos da pasta `/init` e `/scripts` em ordem alfabética.
 
-### 4. Acesse o banco
-```bash
-docker-compose exec db psql -U atmos_user -d atmosmetrics
-```
+### Arquivos Principais:
+1. `01_schema.sql`: Definição de estruturas (DDL). Criação das sequências, tabelas `dim` e `fato`.
+2. `02_populate.sql`: Script responsável por criar as primeiras inserções do calendário (`dim_tempo`), satélites e amostras brasileiras essenciais.
+3. `03_mock_qualidade_ar.sql` & `03_global_expansion.sql`: Expansão em massa da `dim_localidade` para abraçar o cenário global.
+4. `07_restore_brazil.sql`: Correções granulares focadas no rigor territorial do Brasil (Municípios vs. Capitais Globais).
 
-## Scripts de Inicialização
-
-| Arquivo | Descrição |
-|---|---|
-| `01_schema.sql` | Cria todas as tabelas, índices e triggers |
-| `02_populate.sql` | Pré-popula dimensões com dados estáticos do Brasil |
-
-## Tabelas
-
-| Tabela | Tipo | Descrição |
-|---|---|---|
-| `dim_tempo` | Dimensão | Hierarquia temporal (dia/mês/ano/trimestre) |
-| `dim_satelite` | Dimensão | Catálogo de satélites do INPE |
-| `dim_localidade` | Dimensão | Municípios, estados, regiões e biomas |
-| `fato_anomalia_termica` | Fato | Registros de focos de calor |
-
-## Parar o Banco
-```bash
-docker-compose down          # Para e remove os containers (dados persistem)
-docker-compose down -v       # ⚠️ Para E APAGA todos os dados!
-```
+## Como Conectar
+Durante o desenvolvimento local, você pode usar qualquer cliente (DBeaver, DataGrip, PgAdmin) utilizando os seguintes parâmetros:
+- **Host:** `localhost`
+- **Port:** `5432`
+- **User:** `atmos_user`
+- **Password:** `atmos_pass`
+- **Database:** `atmos_db`
