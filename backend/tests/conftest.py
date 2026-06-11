@@ -6,39 +6,36 @@
 
 import os
 import sys
+import types
 from datetime import date, time
 from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 # ---------------------------------------------------------------------------
-# Configurar variáveis de ambiente ANTES de importar qualquer módulo da app,
-# pois app.config.Settings exige essas variáveis.
-# ---------------------------------------------------------------------------
-os.environ.setdefault("POSTGRES_DB", "test")
-os.environ.setdefault("POSTGRES_USER", "test")
-os.environ.setdefault("POSTGRES_PASSWORD", "test")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-
 # Garantir que o diretório backend/ está no path
+# ---------------------------------------------------------------------------
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 # ---------------------------------------------------------------------------
-# Monkey-patch da coluna Geometry do GeoAlchemy2 para compatibilidade com SQLite.
-# O model fato_anomalia_termica usa geoalchemy2.Geometry que não funciona com SQLite.
-# Substituímos por um tipo String antes que os modelos sejam importados.
+# Configurar variáveis de ambiente ANTES de importar qualquer módulo da app
+# ---------------------------------------------------------------------------
+os.environ["POSTGRES_DB"] = "test"
+os.environ["POSTGRES_USER"] = "test"
+os.environ["POSTGRES_PASSWORD"] = "test"
+os.environ["POSTGRES_HOST"] = "localhost"
+os.environ["POSTGRES_PORT"] = "5432"
+
+# ---------------------------------------------------------------------------
+# Monkey-patch geoalchemy2.Geometry ANTES de importar os modelos
 # ---------------------------------------------------------------------------
 import geoalchemy2
 from sqlalchemy import String as _SAString
-
-# Salva o original para não quebrar nada fora dos testes
-_orig_geometry = geoalchemy2.Geometry
 
 class _FakeGeometry(_SAString):
     """Substitui Geometry do PostGIS por String para testes com SQLite."""
@@ -48,24 +45,7 @@ class _FakeGeometry(_SAString):
 geoalchemy2.Geometry = _FakeGeometry
 
 # ---------------------------------------------------------------------------
-# Agora podemos importar os módulos da aplicação com segurança
-# ---------------------------------------------------------------------------
-from app.database import Base, get_db
-from app.models.dim_tempo import DimTempo
-from app.models.dim_localidade import DimLocalidade
-from app.models.dim_satelite import DimSatelite
-from app.models.fato_clima import FatoClima
-from app.models.fato_qualidade_ar import FatoQualidadeAr
-from app.models.fato_anomalia_termica import FatoAnomaliaTermica
-
-# Importa o app FastAPI — precisa vir depois do patch de Geometry
-from app.main import app
-
-from fastapi.testclient import TestClient
-
-
-# ---------------------------------------------------------------------------
-# Engine e Session de testes (SQLite em memória)
+# Criar engine e session de teste (SQLite em memória)
 # ---------------------------------------------------------------------------
 SQLALCHEMY_TEST_URL = "sqlite:///file::memory:?cache=shared&uri=true"
 
@@ -80,6 +60,72 @@ TestSessionLocal = sessionmaker(
     autoflush=False,
     bind=test_engine,
 )
+
+# ---------------------------------------------------------------------------
+# Pré-registrar o módulo app.database em sys.modules com objetos SQLite.
+# Isso evita que o import real tente se conectar ao PostgreSQL via psycopg2.
+# ---------------------------------------------------------------------------
+
+class Base(DeclarativeBase):
+    """Classe base para todos os modelos ORM (versão teste)."""
+    pass
+
+def get_db():
+    """Dependency injection para testes."""
+    db = TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def check_connection():
+    """Sempre retorna True nos testes."""
+    return True
+
+# Garante que o pacote 'app' existe em sys.modules
+if "app" not in sys.modules:
+    app_pkg = types.ModuleType("app")
+    app_pkg.__path__ = [os.path.join(backend_dir, "app")]
+    app_pkg.__package__ = "app"
+    sys.modules["app"] = app_pkg
+
+# Cria o módulo database substituto
+db_module = types.ModuleType("app.database")
+db_module.__file__ = os.path.join(backend_dir, "app", "database.py")
+db_module.__package__ = "app"
+db_module.engine = test_engine
+db_module.SessionLocal = TestSessionLocal
+db_module.Base = Base
+db_module.get_db = get_db
+db_module.check_connection = check_connection
+
+# Registra no sys.modules para interceptar qualquer import futuro
+sys.modules["app.database"] = db_module
+
+# Também seta como atributo do pacote app
+import app as _app_pkg
+_app_pkg.database = db_module
+
+# ---------------------------------------------------------------------------
+# Agora importamos config (que não depende de database)
+# ---------------------------------------------------------------------------
+import app.config
+app.config.get_settings.cache_clear()
+
+# ---------------------------------------------------------------------------
+# Agora podemos importar os modelos — eles usarão nosso Base do SQLite
+# ---------------------------------------------------------------------------
+from app.models.dim_tempo import DimTempo
+from app.models.dim_localidade import DimLocalidade
+from app.models.dim_satelite import DimSatelite
+from app.models.fato_clima import FatoClima
+from app.models.fato_qualidade_ar import FatoQualidadeAr
+from app.models.fato_anomalia_termica import FatoAnomaliaTermica
+
+# Importa o app FastAPI
+from app.main import app as fastapi_app
+
+from fastapi.testclient import TestClient
 
 
 # ---------------------------------------------------------------------------
@@ -120,18 +166,16 @@ def client(db_session):
         finally:
             pass
 
-    app.dependency_overrides[get_db] = _override_get_db
-    with TestClient(app) as c:
+    fastapi_app.dependency_overrides[get_db] = _override_get_db
+    with TestClient(fastapi_app) as c:
         yield c
-    app.dependency_overrides.clear()
+    fastapi_app.dependency_overrides.clear()
 
 
 @pytest.fixture()
 def seed_data(db_session):
     """
-    Popula o banco de testes com dados mínimos:
-    1 DimTempo, 1 DimLocalidade, 1 DimSatelite,
-    1 FatoClima, 1 FatoQualidadeAr, 1 FatoAnomaliaTermica.
+    Popula o banco de testes com dados mínimos.
     """
     # --- DimTempo ---
     tempo = DimTempo(
@@ -144,13 +188,13 @@ def seed_data(db_session):
         nome_mes="Junho",
         semana_do_ano=23,
         dia=10,
-        dia_da_semana=1,   # Terça-feira
+        dia_da_semana=1,
         nome_dia="Terça-feira",
         e_fim_de_semana=False,
     )
     db_session.add(tempo)
 
-    # --- DimLocalidade (cidade brasileira com lat/lon) ---
+    # --- DimLocalidade ---
     local = DimLocalidade(
         id_localidade=1,
         municipio="São Paulo",
@@ -212,7 +256,7 @@ def seed_data(db_session):
     )
     db_session.add(qualidade)
 
-    # --- FatoAnomaliaTermica (geom=None para compatibilidade com SQLite) ---
+    # --- FatoAnomaliaTermica (geom=None para SQLite) ---
     anomalia = FatoAnomaliaTermica(
         id_anomalia=1,
         id_tempo=1,
