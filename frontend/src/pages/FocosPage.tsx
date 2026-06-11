@@ -95,7 +95,7 @@ export default function FocosPage() {
   const exportPDF = () => {
     if (data.length === 0) return;
     const doc = new jsPDF();
-    doc.text('Relatorio de Temperaturas Extremas - AtmosMetrics', 14, 15);
+    doc.text('Relatório de Temperaturas Extremas - AtmosMetrics', 14, 15);
     
     const tableData = data.map(item => [
       item.data_completa ?? '-',

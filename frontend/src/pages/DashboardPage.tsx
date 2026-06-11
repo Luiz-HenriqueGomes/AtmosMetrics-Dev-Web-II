@@ -1,13 +1,9 @@
-import { useEffect, useState } from 'react';
-import { MapPin, AlertCircle, Thermometer, Wind, ThermometerSun, Snowflake, Droplets } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Cell,
-} from 'recharts';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { useEffect, useState, useMemo } from 'react';
+import { MapPin, AlertCircle, Thermometer, ThermometerSun, Snowflake } from 'lucide-react';
+import { MapContainer, TileLayer, Popup, useMap, CircleMarker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import StatCard from '../components/StatCard';
-import { api, type ClimaItem, type ResumoClimaResponse, type ResumoQualidadeArResponse } from '../services/api';
+import { api, type ClimaItem, type ResumoClimaResponse } from '../services/api';
 import './DashboardPage.css';
 
 // Utilitário para formatar nomes de localidades (Title Case)
@@ -53,7 +49,7 @@ const getTempColor = (temp: number) => {
 export default function DashboardPage() {
   const [anomalias, setAnomalias] = useState<ClimaItem[]>([]);
   const [resumoClima, setResumoClima] = useState<ResumoClimaResponse | null>(null);
-  const [resumoAr, setResumoAr] = useState<ResumoQualidadeArResponse | null>(null);
+  // resumoAr removed as it was unused
   const [mapFocus, setMapFocus] = useState<[number, number] | null>(null);
   const [activeFoco, setActiveFoco] = useState<ClimaItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,8 +75,7 @@ export default function DashboardPage() {
 
       // Dados de qualidade do ar (OpenWeatherMap)
       try {
-        const ar = await api.getResumoQualidadeAr();
-        setResumoAr(ar);
+        await api.getResumoQualidadeAr();
       } catch {
         // API de qualidade do ar pode não estar configurada ainda
       }
@@ -139,11 +134,7 @@ export default function DashboardPage() {
       return diffB - diffA;
     })[0];
 
-  // Determina cor do AQI para o card
-  const aqiValue = resumoAr?.aqi_medio ? parseFloat(resumoAr.aqi_medio) : null;
-  const aqiColor = aqiValue !== null
-    ? aqiValue <= 50 ? 'var(--green)' : aqiValue <= 100 ? '#f59e0b' : '#ef4444'
-    : 'var(--text-muted)';
+  // aqiValue was removed because it is unused
 
   return (
     <div className="dashboard">
@@ -234,7 +225,6 @@ export default function DashboardPage() {
               <Popup 
                 position={[parseFloat(activeFoco.latitude), parseFloat(activeFoco.longitude)]}
                 className="custom-popup"
-                onClose={() => setActiveFoco(null)}
               >
                 <div style={{ textAlign: 'center', minWidth: '120px' }}>
                   <strong style={{ fontSize: '14px' }}>{getLocationLabel(activeFoco)}</strong>
@@ -248,18 +238,17 @@ export default function DashboardPage() {
               </Popup>
             )}
 
-
-            {anomalias.map(foco => {
+            {useMemo(() => anomalias.map(foco => {
               if (!foco.latitude || !foco.longitude) return null;
               
               // Determinar o quão extremo é para o tamanho e cor do ponto
               const temp = Number(foco.temperatura_media);
               const color = getTempColor(temp);
-              const radius = Math.max(4, Math.min(14, Math.abs(temp - 20) / 2.5)); // Raio proporcional
+              const radius = Math.max(6, Math.min(18, Math.abs(temp - 20) / 2)); // Raio proporcional ajustado
               
               return (
                 <CircleMarker
-                  key={foco.id_clima}
+                  key={`clima-${foco.id_clima}`}
                   center={[parseFloat(foco.latitude), parseFloat(foco.longitude)]}
                   radius={radius}
                   pathOptions={{ 
@@ -274,16 +263,16 @@ export default function DashboardPage() {
                     <div style={{ textAlign: 'center', minWidth: '120px' }}>
                       <strong style={{ fontSize: '14px' }}>{getLocationLabel(foco)}</strong>
                       <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      Temp Atual: {foco.temperatura_media}°C<br/>
-                      Mín/Máx: {foco.temperatura_min}°C / {foco.temperatura_max}°C<br/>
-                      Umidade: {foco.umidade_media}%<br/>
-                      Data: {foco.data_completa}
-                    </div>
+                        Temp Atual: {foco.temperatura_media}°C<br/>
+                        Mín/Máx: {foco.temperatura_min}°C / {foco.temperatura_max}°C<br/>
+                        Umidade: {foco.umidade_media}%<br/>
+                        Data: {foco.data_completa}
+                      </div>
                     </div>
                   </Popup>
                 </CircleMarker>
               );
-            })}
+            }), [anomalias])}
           </MapContainer>
         )}
       </div>

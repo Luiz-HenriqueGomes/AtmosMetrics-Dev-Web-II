@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Wind, Activity, CheckCircle, AlertOctagon, X, Info } from 'lucide-react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Popup, useMap, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
+// @ts-ignore
 import 'leaflet-velocity';
 import { api, type QualidadeArItem, type PaisOut, type ContinenteOut } from '../services/api';
 import './QualidadeArPage.css';
@@ -243,25 +244,30 @@ export default function QualidadeArPage() {
             <div className="legend-item bg-aqi-hazardous">300+ Perigoso</div>
           </div>
 
-          <MapContainer center={[15, 0]} zoom={2} minZoom={2}>
+          <MapContainer center={[15, 0]} zoom={2} minZoom={2} preferCanvas={true}>
             <TileLayer
               attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
             <WindVelocityLayer />
-            {data.map(item => {
+            
+            {useMemo(() => data.map(item => {
               if (!item.latitude || !item.longitude || !item.aqi) return null;
               const status = getAqiStatus(item.aqi);
+              const radius = Math.max(8, (item.aqi / 500) * 25);
+              
               return (
                 <CircleMarker
                   key={`map-${item.id_qualidade_ar}`}
                   center={[Number(item.latitude), Number(item.longitude)]}
-                  radius={Math.max(6, (item.aqi / 500) * 20)}
-                  fillColor={status.color}
-                  color={status.color}
-                  weight={1}
-                  opacity={0.8}
-                  fillOpacity={0.6}
+                  radius={radius}
+                  pathOptions={{ 
+                    color: status.color, 
+                    fillColor: status.color, 
+                    weight: 2, 
+                    opacity: 0.9, 
+                    fillOpacity: 0.7 
+                  }}
                 >
                   <Popup>
                     <div style={{ color: '#000', fontFamily: 'Inter, sans-serif' }}>
@@ -275,7 +281,7 @@ export default function QualidadeArPage() {
                   </Popup>
                 </CircleMarker>
               );
-            })}
+            }), [data])}
           </MapContainer>
         </div>
 

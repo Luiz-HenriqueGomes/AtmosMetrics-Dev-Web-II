@@ -37,7 +37,7 @@ function flagEmoji(iso: string | null): string {
 
 export default function LocalidadesPage() {
   const [paises, setPaises] = useState<PaisOut[]>([]);
-  const [continentes, setContinentes] = useState<ContinenteOut[]>([]);
+  // continentes backend state was removed as it's not being used
   const [localidades, setLocalidades] = useState<Localidade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +53,9 @@ export default function LocalidadesPage() {
       api.getContinentes().catch(() => [] as ContinenteOut[]),
       api.getLocalidades().catch(() => [] as Localidade[]),
     ])
-      .then(([p, c, l]) => {
+      .then(([p, , l]) => {
         setPaises(p);
-        setContinentes(c);
+        // continentes response is ignored as it's not being used
         setLocalidades(l);
       })
       .catch(() => setError('Não foi possível carregar as localidades.'))
