@@ -642,6 +642,7 @@ Desenvolvedor Full Stack<br/>
 <td align="center">
 <b>Kaio Correia</b><br/>
 Desenvolvedor Full Stack<br/>
+<a href="https://github.com/KaioCorreia">@KaioCorreia</a>
 </td>
 </tr>
 </table>
