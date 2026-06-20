@@ -1,14 +1,31 @@
-# ============================================================
-# AtmosMetrics — Docker Compose
-# ============================================================
-# Subir tudo:           docker compose up -d
-# Parar tudo:           docker compose down
-# Logs do backend:      docker compose logs -f backend
-# Logs do banco:        docker compose logs -f db
-# Acessar o banco:      docker compose exec db psql -U atmos_user -d atmosmetrics
-# ============================================================
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  AtmosMetrics — Docker Compose                              ║
+# ║                                                              ║
+# ║  Profiles:                                                   ║
+# ║    dev:  docker compose --profile dev  up --build            ║
+# ║    prod: docker compose --profile prod up --build            ║
+# ║                                                              ║
+# ║  Comandos úteis:                                             ║
+# ║    Logs:          docker compose logs -f backend             ║
+# ║    Acessar DB:    docker compose exec db psql -U atmos_user  ║
+# ║                     -d atmosmetrics                          ║
+# ║    Rebuild:       docker compose --profile dev up --build    ║
+# ║    Parar tudo:    docker compose --profile dev down          ║
+# ║    Limpar tudo:   docker compose down -v --rmi local         ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+# ================================================================
+# SERVICES
+# ================================================================
 
 services:
+
+  # ==============================================================
+  # DATABASE — PostgreSQL 16 + PostGIS 3.4
+  # ==============================================================
+  # Banco relacional com extensão geoespacial para o Star Schema.
+  # Inicializa automaticamente com os scripts em database/init/.
+  # ==============================================================
   db:
     image: postgis/postgis:16-3.4-alpine
     container_name: atmosmetrics_db
@@ -19,37 +36,177 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d
+      - ./database/init:/docker-entrypoint-initdb.d:ro  # :ro = read-only (segurança)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atmos_user} -d ${POSTGRES_DB:-atmosmetrics}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    networks:
+      - backend-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  backend:
+  # ==============================================================
+  # BACKEND DEV — FastAPI com hot-reload (uvicorn --reload)
+  # ==============================================================
+  # Profile: dev
+  # Target: development (multi-stage)
+  # Volume mount para hot-reload do código Python
+  # ==============================================================
+  backend-dev:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: atmosmetrics_backend
+      target: development         # Usa o stage de desenvolvimento
+    container_name: atmosmetrics_backend_dev
     restart: unless-stopped
+    profiles:
+      - dev                       # Só sobe com --profile dev
     env_file:
       - .env
     environment:
-      # Sobrescreve POSTGRES_HOST para apontar ao serviço interno do Docker
-      - POSTGRES_HOST=db
+      - POSTGRES_HOST=db          # Sobrescreve para apontar ao serviço interno
     ports:
       - "8000:8000"
     volumes:
-      # Hot-reload: qualquer alteração no código reflete sem rebuild
-      - ./backend:/backend
+      - ./backend:/backend        # Hot-reload: alterações refletem sem rebuild
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - backend-net
+      - frontend-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ==============================================================
+  # BACKEND PROD — FastAPI com Gunicorn (multi-worker)
+  # ==============================================================
+  # Profile: prod
+  # Target: production (multi-stage)
+  # Imagem otimizada, não-root, tini, sem hot-reload
+  # ==============================================================
+  backend-prod:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production          # Usa o stage de produção
+    container_name: atmosmetrics_backend_prod
+    restart: unless-stopped
+    profiles:
+      - prod                      # Só sobe com --profile prod
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=db
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend-net
+      - frontend-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ==============================================================
+  # FRONTEND DEV — Vite dev server com HMR
+  # ==============================================================
+  # Profile: dev
+  # Target: development (multi-stage)
+  # Volume mount para Hot Module Replacement
+  # ==============================================================
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development         # Usa o stage de desenvolvimento
+    container_name: atmosmetrics_frontend_dev
+    restart: unless-stopped
+    profiles:
+      - dev                       # Só sobe com --profile dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app           # Hot-reload: HMR reflete alterações instantaneamente
+      - /app/node_modules         # Volume anônimo para evitar conflito de node_modules
+    depends_on:
+      - backend-dev
+    networks:
+      - frontend-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ==============================================================
+  # FRONTEND PROD — NGINX servindo assets estáticos
+  # ==============================================================
+  # Profile: prod
+  # Target: production (multi-stage)
+  # Imagem ultra-leve (~30MB): NGINX Alpine + assets minificados
+  # Proxy reverso para /api → backend
+  # ==============================================================
+  frontend-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production          # Usa o stage de produção (NGINX)
+    container_name: atmosmetrics_frontend_prod
+    restart: unless-stopped
+    profiles:
+      - prod                      # Só sobe com --profile prod
+    ports:
+      - "80:80"                   # Porta padrão HTTP (produção)
+    depends_on:
+      - backend-prod
+    networks:
+      - frontend-net
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ==============================================================
+  # PGADMIN — Interface web para administração do banco
+  # ==============================================================
+  # Profile: dev (apenas disponível em desenvolvimento)
+  # Acessível em http://localhost:8080
+  # ==============================================================
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: atmosmetrics_pgadmin
     restart: unless-stopped
+    profiles:
+      - dev                       # Só disponível em desenvolvimento
     env_file:
       - .env
     ports:
@@ -57,25 +214,38 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - backend-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: atmosmetrics_frontend
-    restart: unless-stopped
-    ports:
-      - "5173:5173"
-    volumes:
-      # Hot-reload: reflete as alterações do Windows no container
-      - ./frontend:/app
-      # Volume anônimo para o node_modules não dar conflito
-      - /app/node_modules
-    depends_on:
-      backend:
-        condition: service_started
+# ================================================================
+# NETWORKS — Segmentação de rede por camada
+# ================================================================
+# Dois segmentos isolados:
+#   • backend-net:  db ↔ backend (banco não é acessível pelo frontend)
+#   • frontend-net: frontend ↔ backend (comunicação via proxy/API)
+# ================================================================
+
+networks:
+  backend-net:
+    name: atmosmetrics_backend
+    driver: bridge
+  frontend-net:
+    name: atmosmetrics_frontend
+    driver: bridge
+
+# ================================================================
+# VOLUMES — Dados persistentes
+# ================================================================
 
 volumes:
   pgdata:
     name: atmosmetrics_pgdata
-

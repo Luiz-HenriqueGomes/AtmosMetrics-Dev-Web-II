@@ -1,32 +1,36 @@
 # ============================================================
-# AtmosMetrics — Frontend .dockerignore
+# AtmosMetrics — Backend .dockerignore
 # ============================================================
 # Exclui do build context tudo que não é necessário na imagem.
 # Reduz tamanho do context e acelera o build.
 # ============================================================
 
-# --- Dependências (serão instaladas no build) ---
-node_modules/
-
-# --- Build output (será gerado no build) ---
-dist/
-
 # --- Controle de versão ---
 .git
 .gitignore
 
-# --- Variáveis de ambiente ---
-.env
-.env.*
+# --- Python cache e bytecode ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
 
-# --- Testes ---
-src/__tests__/
-*.test.ts
-*.test.tsx
-*.spec.ts
-*.spec.tsx
-vitest.config.*
-coverage/
+# --- Ambientes virtuais ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Testes (não vão para produção) ---
+tests/
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
 
 # --- IDE e editores ---
 .vscode/
@@ -44,13 +48,16 @@ Dockerfile*
 docker-compose*
 .dockerignore
 
+# --- Variáveis de ambiente ---
+.env
+.env.*
+
+# --- Scripts SQL de manutenção ---
+scripts/
+
 # --- Logs ---
 *.log
 logs/
-npm-debug.log*
-
-# --- NGINX config (copiada explicitamente no Dockerfile) ---
-# nginx/ — NÃO excluir, é necessário para o build prod
 
 # --- OS ---
 .DS_Store
